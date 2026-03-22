@@ -1,0 +1,60 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+target/
+*.class
+*.jar
+!*-runner.jar
+
+# ── Quarkus ───────────────────────────────────────────────────────────────────
+.quarkus/
+
+# ── Maven wrapper cache ───────────────────────────────────────────────────────
+.mvn/repository/
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ── Python (PaddleOCR sidecar) ────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+.Python
+paddle-ocr-sidecar/.venv/
+paddle-ocr-sidecar/venv/
+paddle-ocr-sidecar/*.egg-info/
+paddle-ocr-sidecar/dist/
+paddle-ocr-sidecar/.pytest_cache/
+# PaddleOCR downloads large model files at runtime — never commit them
+paddle-ocr-sidecar/inference/
+paddle-ocr-sidecar/.paddleocr/
+
+# ── Runtime logs ──────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# (docker-compose.override.yml is for local overrides — not committed by default)
+docker-compose.override.yml
+
+# ── Test / coverage reports ───────────────────────────────────────────────────
+target/surefire-reports/
+target/site/

@@ -1,0 +1,30 @@
+# Build output — rebuilt inside the Docker layer
+target/
+
+# Version control
+.git/
+.gitignore
+
+# CI / IDE
+.github/
+.idea/
+*.iml
+.vscode/
+
+# Local Maven repo cache (not needed in image)
+.mvn/repository/
+
+# Logs produced at runtime
+logs/
+*.log
+
+# Test sources (not packaged in the jar)
+src/test/
+
+# Local env overrides
+.env
+*.env
+
+# OS noise
+.DS_Store
+Thumbs.db

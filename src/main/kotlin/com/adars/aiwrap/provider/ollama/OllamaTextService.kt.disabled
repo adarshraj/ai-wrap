@@ -1,0 +1,23 @@
+package com.adars.aiwrap.provider.ollama
+
+import dev.langchain4j.data.message.UserMessage
+import dev.langchain4j.model.chat.ChatLanguageModel
+import io.quarkiverse.langchain4j.ModelName
+import jakarta.enterprise.context.ApplicationScoped
+import jakarta.inject.Inject
+
+/**
+ * Text-only LLM service using a locally-running model via Ollama (e.g. Llama 3.2).
+ */
+@ApplicationScoped
+class OllamaTextService {
+
+    @Inject
+    @field:ModelName("ollama-text")
+    lateinit var model: ChatLanguageModel
+
+    fun chat(prompt: String): String {
+        val response = model.chat(UserMessage.from(prompt))
+        return response.aiMessage().text() ?: ""
+    }
+}

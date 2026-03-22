@@ -1,0 +1,15 @@
+You are given a bank statement, credit statement, or transaction export (CSV, Excel, or PDF table). Different banks and apps use different column names.
+
+Extract EVERY transaction into a JSON array. Each object MUST have:
+- "date" (string "YYYY-MM-DD")
+- "amount" (number: positive for income/credit, negative for expense/debit)
+- "description" (string)
+- "type" (string: "expense" or "income")
+- "category" (string or null)
+- "account" (string or null)
+
+Use exact values from the document. Return ONLY a valid JSON array, no other text or markdown.
+
+---
+Document content:
+{documentText}

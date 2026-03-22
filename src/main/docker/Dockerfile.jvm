@@ -1,0 +1,41 @@
+# ── Build output layout (produced by: mvn package) ───────────────────────────
+# target/quarkus-app/
+#   quarkus-run.jar   — thin launcher
+#   app/              — application JARs
+#   lib/              — runtime dependencies
+#   quarkus/          — Quarkus framework JARs
+
+FROM eclipse-temurin:25-jre
+
+LABEL org.opencontainers.image.title="ai-wrap" \
+      org.opencontainers.image.description="Vendor-agnostic AI gateway" \
+      org.opencontainers.image.version="1.0.0"
+
+# Non-root user for security
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+
+WORKDIR /app
+
+# JVM flags tuned for containers:
+#   UseContainerSupport  — respect cgroup CPU/memory limits
+#   MaxRAMPercentage     — use up to 75% of container memory for heap
+#   ExitOnOutOfMemoryError — crash fast instead of degrading
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+
+# Copy Quarkus fast-jar layout
+COPY --chown=appuser:appgroup target/quarkus-app/lib/ lib/
+COPY --chown=appuser:appgroup target/quarkus-app/*.jar ./
+COPY --chown=appuser:appgroup target/quarkus-app/app/ app/
+COPY --chown=appuser:appgroup target/quarkus-app/quarkus/ quarkus/
+
+# Create log directory for audit logs
+RUN mkdir -p logs && chown appuser:appgroup logs
+
+USER appuser
+
+EXPOSE 8090
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- http://localhost:8090/q/health/live || exit 1
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar quarkus-run.jar"]

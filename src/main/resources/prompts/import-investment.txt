@@ -1,0 +1,31 @@
+You are given a document that may be a brokerage statement, mutual fund statement, or holdings report (CSV, Excel, or PDF table). Different brokers and fund houses use different column names and layouts.
+
+Extract EVERY holding/position/transaction into a JSON array. Do not skip, omit, or summarize any row. The output array must contain one object per data row in the document.
+
+Each object MUST have these exact keys:
+- "name" (string): security or scheme name (use Symbol/ticker if that is the only name column)
+- "symbol" (string or null): ticker or symbol (e.g. NSE/BSE symbol)
+- "asset_type" (string): one of: stock, mutual_fund, bond, fixed_deposit, ppf, nsc, etf, cryptocurrency, gold, land
+- "quantity" (number)
+- "purchase_price" (number)
+- "current_price" (number or null)
+- "currency" (string, default "INR")
+- "purchase_date" (string "YYYY-MM-DD", from Trade Date / Date / Transaction Date)
+- "maturity_date" (string "YYYY-MM-DD" or null)
+- "account_name" (string or null): broker/fund house name if visible
+- "family_member_name" (string or null)
+- "notes" (string or null)
+
+Include these keys when present in the document (use null if missing):
+- "exchange" (string or null): e.g. NSE, BSE
+- "segment" (string or null): e.g. EQ, F&O
+- "isin" (string or null): ISIN code
+- "trade_id" (string or null)
+- "order_id" (string or null)
+- "order_execution_time" (string or null): time or full datetime
+
+Use exact values from the document. If a value is missing, use null or 0 or "INR" as appropriate. Infer asset_type from context (e.g. "Scheme" -> mutual_fund, "Equity" -> stock, "EQ" -> stock). Return ONLY a valid JSON array, no other text or markdown.
+
+---
+Document content (first 1000 rows):
+{documentText}
