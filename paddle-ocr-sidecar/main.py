@@ -36,6 +36,7 @@ SUPPORTED_MIME_TYPES = {
     "image/heic",
     "image/heif",
     "application/pdf",
+    "application/octet-stream",  # Quarkus REST client sends File parts as octet-stream
 }
 import os
 MAX_FILE_BYTES = int(os.environ.get("AI_WRAP_MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
