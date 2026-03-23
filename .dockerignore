@@ -1,5 +1,6 @@
-# Build output — rebuilt inside the Docker layer
+# Build output — exclude everything except the packaged app
 target/
+!target/quarkus-app/
 
 # Version control
 .git/

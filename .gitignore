@@ -58,3 +58,7 @@ docker-compose.override.yml
 # ── Test / coverage reports ───────────────────────────────────────────────────
 target/surefire-reports/
 target/site/
+
+# ── Local dev utilities ───────────────────────────────────────────────────────
+gen_doc.py
+JWT_Debug_Deep_Dive.docx

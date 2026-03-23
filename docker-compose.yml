@@ -11,10 +11,11 @@ services:
       - "${AI_WRAP_PORT:-8090}:8090"
     environment:
       JWT_SECRET: ${JWT_SECRET}
-      # AI provider keys — set only the ones you use
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      # AI provider keys — set only the ones you use; unset keys default to DISABLED
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-DISABLED}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-DISABLED}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-DISABLED}
       # Model overrides
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
