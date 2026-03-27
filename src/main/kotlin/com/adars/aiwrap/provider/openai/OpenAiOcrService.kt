@@ -69,7 +69,7 @@ class OpenAiOcrService {
     private fun buildDynamic(apiKey: String, params: ModelParams?): ChatModel =
         OpenAiChatModel.builder()
             .apiKey(apiKey)
-            .baseUrl(baseUrl)
+            .baseUrl(params?.baseUrl ?: baseUrl)  // per-request URL overrides server default
             .modelName(params?.model ?: defaultModelId)
             .timeout(Duration.ofSeconds(params?.timeoutSeconds?.toLong() ?: 60))
             .logRequests(false)

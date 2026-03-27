@@ -80,6 +80,12 @@ data class ModelParams(
      * and cannot be overridden at request time.
      */
     @JsonProperty("timeout_seconds") val timeoutSeconds: Int? = null,
+    /**
+     * Custom base URL for OpenAI-compatible providers (e.g. "https://api.groq.com/openai/v1").
+     * Overrides the server-configured default for OPENAI and all OpenAI-compatible providers.
+     * Required when [provider] is OPENAI_COMPATIBLE.
+     */
+    @JsonProperty("base_url") val baseUrl: String? = null,
 )
 
 // ── Multi-turn chat ───────────────────────────────────────────────────────────

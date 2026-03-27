@@ -10,7 +10,14 @@ enum class AiProvider(val supportsText: Boolean, val supportsVision: Boolean) {
     GEMINI(supportsText = true,  supportsVision = true),
     DEEPSEEK(supportsText = true,  supportsVision = false),  // text-only
     OLLAMA(supportsText = true,  supportsVision = true),     // depends on model
-    PADDLE(supportsText = false, supportsVision = true);     // OCR sidecar — image in, text out
+    PADDLE(supportsText = false, supportsVision = true),     // OCR sidecar — image in, text out
+    // OpenAI-compatible free-tier providers
+    GROQ(supportsText = true,    supportsVision = true),     // Llama 4 Scout supports vision
+    OPENROUTER(supportsText = true, supportsVision = true),  // routes to many models; some support vision
+    MISTRAL(supportsText = true, supportsVision = true),     // Mistral Small 3.1 supports vision
+    CEREBRAS(supportsText = true, supportsVision = false),   // text-only (fastest inference)
+    /** Any OpenAI-compatible endpoint — caller must supply base_url in model_params. */
+    OPENAI_COMPATIBLE(supportsText = true, supportsVision = true);
 
     companion object {
         fun fromString(value: String): AiProvider =
