@@ -10,8 +10,7 @@ services:
     ports:
       - "${AI_WRAP_PORT:-8090}:8090"
     environment:
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://localhost:8703}
       # AI provider keys — set only the ones you use; unset keys default to DISABLED
       OPENAI_API_KEY: ${OPENAI_API_KEY:-DISABLED}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-DISABLED}

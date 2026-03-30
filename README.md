@@ -75,7 +75,7 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 - **Token usage**: `input_tokens` and `output_tokens` returned in every response
 
 ### Security
-- **JWT authentication** (HS256) on all endpoints via SmallRye JWT
+- **JWT authentication** (ES256) on all endpoints via SmallRye JWT — tokens issued by [auth-service](https://github.com/adarshraj/auth-service)
 - **PromptGuard**: blocks prompt injection patterns (jailbreak, DAN mode, role injection, ChatML/LLaMA tokens, etc.)
 - **ContentGuard**: blocks harmful-intent prompts (weapons, malware, violence, fraud, drug synthesis, etc.)
 - **Max prompt length**: configurable character limit (default 200,000) on raw prompts and template variables
@@ -138,7 +138,7 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `JWT_SECRET` | HS256 shared secret — must match the secret used to sign tokens in your app |
+| `AUTH_SERVICE_URL` | Base URL of your [auth-service](https://github.com/adarshraj/auth-service) instance (e.g. `https://auth.example.com`). Used to fetch the ES256 public key from `/.well-known/jwks.json` and validate the token issuer. Defaults to `http://localhost:8703`. |
 
 ### AI Provider Keys (at least one required)
 
@@ -203,8 +203,8 @@ If a key is not set it defaults to `DISABLED`. The server starts normally; reque
 ### 1. Set environment variables
 
 ```bash
-export JWT_SECRET=any-local-dev-secret
-export GEMINI_API_KEY=your-gemini-key   # or OPENAI_API_KEY / DEEPSEEK_API_KEY
+export AUTH_SERVICE_URL=http://localhost:8703  # auth-service must be running
+export GEMINI_API_KEY=your-gemini-key          # or OPENAI_API_KEY / DEEPSEEK_API_KEY
 ```
 
 ### 2. Start in dev mode
@@ -250,7 +250,7 @@ curl -s -X POST http://localhost:8090/ai/invoke \
   }'
 ```
 
-Generate a test JWT at [jwt.io](https://jwt.io) — algorithm HS256, payload `{ "sub": "test-user" }`, secret matching `JWT_SECRET`.
+Obtain a JWT from auth-service: `POST http://localhost:8703/auth/login` with your credentials.
 
 ---
 
@@ -273,7 +273,7 @@ Output: `target/quarkus-app/quarkus-run.jar`
 ### Run the JAR directly
 
 ```bash
-JWT_SECRET=your-secret \
+AUTH_SERVICE_URL=http://localhost:8703 \
 GEMINI_API_KEY=your-key \
 java -jar target/quarkus-app/quarkus-run.jar
 ```
@@ -335,7 +335,7 @@ docker network create ai-wrap-network
 
 ```bash
 cp .env.example .env
-# Fill in JWT_SECRET and at least one AI provider key
+# Fill in AUTH_SERVICE_URL and at least one AI provider key
 ```
 
 ### 3. Build and start
@@ -378,7 +378,7 @@ docker compose --profile ocr logs -f paddle-ocr
 
 ## API Reference
 
-All endpoints require `Authorization: Bearer <jwt>` (HS256, signed with `JWT_SECRET`).
+All endpoints require `Authorization: Bearer <jwt>` (ES256, issued by [auth-service](https://github.com/adarshraj/auth-service)).
 
 Interactive documentation is available at `/q/swagger-ui`.
 
@@ -556,7 +556,7 @@ Readiness reports DOWN only if **no** provider is enabled. Individual provider s
 
 ### Authentication
 
-All endpoints require a valid JWT in the `Authorization: Bearer <token>` header. Tokens must be HS256-signed with the shared `JWT_SECRET`. AI Wrap validates the signature but does not enforce claims beyond the signature — your app controls what goes in the token.
+All endpoints require a valid JWT in the `Authorization: Bearer <token>` header. Tokens must be ES256-signed by [auth-service](https://github.com/adarshraj/auth-service). AI Wrap fetches the public key automatically from `AUTH_SERVICE_URL/.well-known/jwks.json` and validates the signature and issuer claim. No shared secret is needed.
 
 ### PromptGuard
 
@@ -841,7 +841,7 @@ AiProvider.OLLAMA -> { prompt, b64, mime -> ollamaOcr.invokeVision(prompt, b64, 
 
 ## Connecting Your App
 
-AI Wrap is designed to be called by any application. The only shared configuration is `JWT_SECRET`.
+AI Wrap is designed to be called by any application. The only shared configuration is `AUTH_SERVICE_URL` — your app obtains JWTs from auth-service and passes them to AI Wrap.
 
 ### Required environment variable in your app
 
