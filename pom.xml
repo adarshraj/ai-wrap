@@ -98,6 +98,22 @@
       <groupId>io.quarkiverse.langchain4j</groupId>
       <artifactId>quarkus-langchain4j-ai-gemini</artifactId>
     </dependency>
+    <!-- Anthropic (Claude) -->
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-anthropic</artifactId>
+    </dependency>
+    <!-- Azure OpenAI -->
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-azure-openai</artifactId>
+    </dependency>
+    <!-- AWS Bedrock (requires AWS credentials — uncomment to enable)
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-bedrock</artifactId>
+    </dependency>
+    -->
     <!-- Ollama (local models: LLaVA for vision, Llama for text)
          Uncomment to enable local model support via Ollama.
          WARNING: Quarkus Dev Services will try to download the model on first start.

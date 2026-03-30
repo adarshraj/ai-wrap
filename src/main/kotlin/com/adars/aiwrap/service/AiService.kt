@@ -65,6 +65,14 @@ class AiService @Inject constructor(
     private val deepSeekDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.api-key", defaultValue = "DISABLED")
     private val deepSeekApiKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.chat-model.model-name", defaultValue = "claude-sonnet-4-20250514")
+    private val anthropicDefaultModel: String,
+    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.api-key", defaultValue = "DISABLED")
+    private val anthropicApiKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.chat-model.deployment-name", defaultValue = "gpt-4o-mini")
+    private val azureOpenAiDefaultModel: String,
+    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.api-key", defaultValue = "DISABLED")
+    private val azureOpenAiApiKey: String,
     @ConfigProperty(name = "aiwrap.max-prompt-chars", defaultValue = "200000")
     private val maxPromptChars: Int,
     private val registry: io.micrometer.core.instrument.MeterRegistry,
@@ -189,6 +197,14 @@ class AiService @Inject constructor(
             ProviderInfo(
                 id = "deepseek", supportsText = true, supportsVision = false,
                 defaultModel = deepSeekDefaultModel, enabled = deepSeekApiKey != "DISABLED",
+            ),
+            ProviderInfo(
+                id = "anthropic", supportsText = true, supportsVision = true,
+                defaultModel = anthropicDefaultModel, enabled = anthropicApiKey != "DISABLED",
+            ),
+            ProviderInfo(
+                id = "azure_openai", supportsText = true, supportsVision = true,
+                defaultModel = azureOpenAiDefaultModel, enabled = azureOpenAiApiKey != "DISABLED",
             ),
             ProviderInfo(
                 id = "ollama", supportsText = true, supportsVision = true,

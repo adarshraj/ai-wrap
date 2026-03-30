@@ -22,6 +22,10 @@ class ProviderHealthCheck @jakarta.inject.Inject constructor(
     private val geminiKey: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.api-key", defaultValue = "DISABLED")
     private val deepSeekKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.api-key", defaultValue = "DISABLED")
+    private val anthropicKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.api-key", defaultValue = "DISABLED")
+    private val azureOpenAiKey: String,
     @ConfigProperty(name = "aiwrap.paddle-ocr.enabled", defaultValue = "false")
     private val paddleEnabled: Boolean,
 ) : HealthCheck {
@@ -30,13 +34,18 @@ class ProviderHealthCheck @jakarta.inject.Inject constructor(
         val openAiEnabled = openAiKey != "DISABLED"
         val geminiEnabled = geminiKey != "DISABLED"
         val deepSeekEnabled = deepSeekKey != "DISABLED"
-        val anyEnabled = openAiEnabled || geminiEnabled || deepSeekEnabled || paddleEnabled
+        val anthropicEnabled = anthropicKey != "DISABLED"
+        val azureOpenAiEnabled = azureOpenAiKey != "DISABLED"
+        val anyEnabled = openAiEnabled || geminiEnabled || deepSeekEnabled ||
+            anthropicEnabled || azureOpenAiEnabled || paddleEnabled
 
         return HealthCheckResponse.named("ai-providers")
             .status(anyEnabled)
             .withData("openai", if (openAiEnabled) "enabled" else "disabled")
             .withData("gemini", if (geminiEnabled) "enabled" else "disabled")
             .withData("deepseek", if (deepSeekEnabled) "enabled" else "disabled")
+            .withData("anthropic", if (anthropicEnabled) "enabled" else "disabled")
+            .withData("azure-openai", if (azureOpenAiEnabled) "enabled" else "disabled")
             .withData("paddle-ocr", if (paddleEnabled) "enabled" else "disabled")
             .build()
     }

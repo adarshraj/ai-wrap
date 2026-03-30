@@ -9,6 +9,8 @@ enum class AiProvider(val supportsText: Boolean, val supportsVision: Boolean) {
     OPENAI(supportsText = true,  supportsVision = true),
     GEMINI(supportsText = true,  supportsVision = true),
     DEEPSEEK(supportsText = true,  supportsVision = false),  // text-only
+    ANTHROPIC(supportsText = true, supportsVision = true),    // Claude models
+    AZURE_OPENAI(supportsText = true, supportsVision = true), // Azure-hosted OpenAI models
     OLLAMA(supportsText = true,  supportsVision = true),     // depends on model
     PADDLE(supportsText = false, supportsVision = true),     // OCR sidecar — image in, text out
     // OpenAI-compatible free-tier providers
@@ -16,6 +18,8 @@ enum class AiProvider(val supportsText: Boolean, val supportsVision: Boolean) {
     OPENROUTER(supportsText = true, supportsVision = true),  // routes to many models; some support vision
     MISTRAL(supportsText = true, supportsVision = true),     // Mistral Small 3.1 supports vision
     CEREBRAS(supportsText = true, supportsVision = false),   // text-only (fastest inference)
+    XAI(supportsText = true, supportsVision = false),        // xAI Grok models (OpenAI-compatible)
+    COHERE(supportsText = true, supportsVision = false),     // Cohere Command models (OpenAI-compatible)
     /** Any OpenAI-compatible endpoint — caller must supply base_url in model_params. */
     OPENAI_COMPATIBLE(supportsText = true, supportsVision = true);
 
