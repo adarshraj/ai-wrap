@@ -12,7 +12,6 @@ enum class AiProvider(val supportsText: Boolean, val supportsVision: Boolean) {
     ANTHROPIC(supportsText = true, supportsVision = true),    // Claude models
     AZURE_OPENAI(supportsText = true, supportsVision = true), // Azure-hosted OpenAI models
     OLLAMA(supportsText = true,  supportsVision = true),     // depends on model
-    PADDLE(supportsText = false, supportsVision = true),     // OCR sidecar — image in, text out
     // OpenAI-compatible free-tier providers
     GROQ(supportsText = true,    supportsVision = true),     // Llama 4 Scout supports vision
     OPENROUTER(supportsText = true, supportsVision = true),  // routes to many models; some support vision

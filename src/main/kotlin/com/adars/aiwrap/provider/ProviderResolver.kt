@@ -52,7 +52,6 @@ class ProviderResolver @Inject constructor(
     /**
      * Returns a function (prompt, imageBase64, mimeType) -> ProviderResult for vision-capable providers.
      * [systemPrompt] and [params] apply to the request; nulls use configured defaults.
-     * PADDLE is handled directly by AiService via the REST sidecar client.
      */
     fun visionFunction(
         provider: AiProvider,
@@ -76,16 +75,13 @@ class ProviderResolver @Inject constructor(
                 "Cerebras does not support vision/image input. Use GROQ, OPENAI, GEMINI, or OPENROUTER."
             )
             AiProvider.DEEPSEEK -> throw UnsupportedOperationException(
-                "DeepSeek does not support vision/image input. Use OPENAI, GEMINI, or PADDLE."
+                "DeepSeek does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
             )
             AiProvider.XAI -> throw UnsupportedOperationException(
                 "xAI does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
             )
             AiProvider.COHERE -> throw UnsupportedOperationException(
                 "Cohere does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
-            )
-            AiProvider.PADDLE -> throw UnsupportedOperationException(
-                "PADDLE is handled directly by AiService via the REST sidecar client."
             )
         }
 
@@ -114,9 +110,6 @@ class ProviderResolver @Inject constructor(
             AiProvider.OPENAI_COMPATIBLE -> { msgs -> openAiText.chat(msgs, params, apiKey) }
             AiProvider.OLLAMA -> throw UnsupportedOperationException(
                 "Ollama support is not enabled. Enable the quarkus-langchain4j-ollama dependency in pom.xml."
-            )
-            AiProvider.PADDLE -> throw UnsupportedOperationException(
-                "PADDLE is an OCR-only provider and cannot handle text prompts."
             )
         }
 }

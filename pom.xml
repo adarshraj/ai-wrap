@@ -71,16 +71,6 @@
       <artifactId>quarkus-smallrye-jwt</artifactId>
     </dependency>
 
-    <!-- ── REST client for PaddleOCR sidecar (renamed from rest-client-reactive in 3.9+) -->
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-rest-client</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-rest-client-jackson</artifactId>
-    </dependency>
-
     <!-- ── Health endpoint (/q/health) ─────────────────────────────────── -->
     <dependency>
       <groupId>io.quarkus</groupId>

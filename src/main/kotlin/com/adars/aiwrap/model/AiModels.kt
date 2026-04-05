@@ -42,7 +42,7 @@ data class ProviderInfo(
     val id: String,
     @JsonProperty("supports_text") val supportsText: Boolean,
     @JsonProperty("supports_vision") val supportsVision: Boolean,
-    /** Default model configured in application.properties. Null for PADDLE (not an LLM). */
+    /** Default model configured in application.properties. */
     @JsonProperty("default_model") val defaultModel: String?,
     /** Whether this provider is currently enabled (API key present and non-disabled). */
     val enabled: Boolean,
@@ -158,7 +158,7 @@ data class AiInvokeRequest(
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class AiInvokeResponse(
-    /** Raw text returned by the LLM (or raw OCR text for PADDLE). */
+    /** Raw text returned by the LLM. */
     val result: String,
     val provider: String,
     val model: String?,

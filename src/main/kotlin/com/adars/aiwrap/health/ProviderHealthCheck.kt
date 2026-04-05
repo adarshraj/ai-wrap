@@ -8,8 +8,7 @@ import org.eclipse.microprofile.health.Readiness
 
 /**
  * Readiness check that verifies at least one AI provider is configured.
- * Reports UP only when at least one LLM provider has a real API key (not "DISABLED")
- * or PaddleOCR sidecar is enabled.
+ * Reports UP only when at least one LLM provider has a real API key (not "DISABLED").
  *
  * Exposed at /q/health/ready as the "ai-providers" check.
  */
@@ -26,8 +25,6 @@ class ProviderHealthCheck @jakarta.inject.Inject constructor(
     private val anthropicKey: String,
     @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.api-key", defaultValue = "DISABLED")
     private val azureOpenAiKey: String,
-    @ConfigProperty(name = "aiwrap.paddle-ocr.enabled", defaultValue = "false")
-    private val paddleEnabled: Boolean,
 ) : HealthCheck {
 
     override fun call(): HealthCheckResponse {
@@ -37,7 +34,7 @@ class ProviderHealthCheck @jakarta.inject.Inject constructor(
         val anthropicEnabled = anthropicKey != "DISABLED"
         val azureOpenAiEnabled = azureOpenAiKey != "DISABLED"
         val anyEnabled = openAiEnabled || geminiEnabled || deepSeekEnabled ||
-            anthropicEnabled || azureOpenAiEnabled || paddleEnabled
+            anthropicEnabled || azureOpenAiEnabled
 
         return HealthCheckResponse.named("ai-providers")
             .status(anyEnabled)
@@ -46,7 +43,6 @@ class ProviderHealthCheck @jakarta.inject.Inject constructor(
             .withData("deepseek", if (deepSeekEnabled) "enabled" else "disabled")
             .withData("anthropic", if (anthropicEnabled) "enabled" else "disabled")
             .withData("azure-openai", if (azureOpenAiEnabled) "enabled" else "disabled")
-            .withData("paddle-ocr", if (paddleEnabled) "enabled" else "disabled")
             .build()
     }
 }

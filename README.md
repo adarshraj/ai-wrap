@@ -2,7 +2,7 @@
 
 A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls two HTTP endpoints — AI Wrap handles provider routing, prompt templating, security guards, rate limiting, reliability, and response normalisation. No AI SDK code lives in your client.
 
-**Providers**: OpenAI · Google Gemini · DeepSeek · PaddleOCR (sidecar) · Ollama (optional, disabled by default)
+**Providers**: OpenAI · Google Gemini · DeepSeek · Anthropic · Azure OpenAI · Groq · OpenRouter · Mistral · Cerebras · xAI · Cohere · Ollama (optional, disabled by default)
 
 **Stack**: Kotlin 2.3 · Quarkus 3.32 · Java 25 · LangChain4j 1.7 · SmallRye JWT / Fault Tolerance / Health / OpenAPI · Micrometer + Prometheus
 
@@ -16,7 +16,6 @@ A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls 
 4. [Environment Variables](#environment-variables)
 5. [Local Development](#local-development)
 6. [Building the Application](#building-the-application)
-7. [PaddleOCR Sidecar](#paddleocr-sidecar)
 8. [Running with Docker Compose](#running-with-docker-compose)
 9. [API Reference](#api-reference)
 10. [Security](#security)
@@ -48,9 +47,10 @@ Your App (any client)
         │     @Bulkhead    ──► Gemini  (gemini-2.0-flash, vision + text)
         │     @CircuitBreaker ──► DeepSeek (deepseek-chat, text only)
         │     @Retry       ──► Ollama  (llava / llama3.2, optional)
-        │
-        └── REST client ──► paddle-ocr sidecar (Python/FastAPI, port 8091)
 ```
+
+For OCR, see [paddle-ocr-wrap](https://github.com/adarshraj/paddle-ocr-wrap) — a
+standalone HTTP service. Consumers that need OCR + LLM call both services directly.
 
 AI Wrap is **stateless** — no database. It:
 
@@ -120,7 +120,6 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 | Java (JDK) | 25 | Run / build the Quarkus app |
 | Docker | 24+ | Container runtime |
 | Docker Compose | v2 | Multi-service orchestration |
-| Python | 3.11+ | PaddleOCR sidecar (local dev only, optional) |
 
 > Maven is bundled via the Maven wrapper (`./mvnw`). Python is not needed if you run the sidecar via Docker.
 
@@ -180,13 +179,6 @@ If a key is not set it defaults to `DISABLED`. The server starts normally; reque
 |----------|---------|-------------|
 | `AI_WRAP_ALLOWED_ORIGIN` | `http://localhost:5173` | CORS allowed origin |
 | `LOG_DIR` | `logs` | Directory for `audit.log` |
-
-### PaddleOCR (optional)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PADDLE_OCR_ENABLED` | `false` | Set `true` to enable the PaddleOCR sidecar |
-| `PADDLE_OCR_URL` | `http://paddle-ocr:8091` | URL of the sidecar |
 
 ### Ollama (disabled by default)
 
@@ -289,40 +281,6 @@ The image uses Eclipse Temurin 25 JRE, runs as a non-root user, and includes a `
 
 ---
 
-## PaddleOCR Sidecar
-
-The sidecar is a FastAPI service that runs PaddleOCR locally. Only needed when `PADDLE_OCR_ENABLED=true`.
-
-**Supported input formats**: JPEG, PNG, WebP, BMP, HEIC/HEIF, PDF (max 20 MB per file)
-
-For PDF files each page is rendered at 150 DPI and OCR'd; results are concatenated. HEIC is converted transparently via `pillow-heif`.
-
-### Running locally (without Docker)
-
-```bash
-cd paddle-ocr-sidecar
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt  # downloads PaddleOCR models (~500 MB on first run)
-uvicorn main:app --host 0.0.0.0 --port 8091
-```
-
-Then tell AI Wrap where to find it:
-
-```bash
-export PADDLE_OCR_URL=http://localhost:8091
-export PADDLE_OCR_ENABLED=true
-```
-
-### Sidecar API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Returns `{ "status": "ok", "provider": "paddle" }` |
-| `/ocr` | POST | Multipart `file` field — returns OCR text and bounding boxes |
-
----
-
 ## Running with Docker Compose
 
 ### 1. Create the shared external network
@@ -340,14 +298,8 @@ cp .env.example .env
 
 ### 3. Build and start
 
-Without OCR (default):
 ```bash
 docker compose up --build -d
-```
-
-With PaddleOCR sidecar:
-```bash
-docker compose --profile ocr up --build -d
 ```
 
 ### 4. Verify
@@ -360,7 +312,6 @@ curl http://localhost:8090/q/health
 
 ```bash
 docker compose logs -f ai-wrap
-docker compose --profile ocr logs -f paddle-ocr
 ```
 
 ### Docker Compose services
@@ -368,10 +319,8 @@ docker compose --profile ocr logs -f paddle-ocr
 | Service | Port | Description |
 |---------|------|-------------|
 | `ai-wrap` | `8090` (host) | Quarkus application |
-| `paddle-ocr` | `8091` (internal only) | Python OCR sidecar |
 
 **Networks:**
-- `wrap-internal` — private bridge between `ai-wrap` and `paddle-ocr`
 - `ai-wrap-network` — external network your calling apps join to reach AI Wrap
 
 ---
@@ -409,8 +358,7 @@ Response is cached for 5 minutes (`Cache-Control: public, max-age=300`).
     { "id": "openai",   "supports_text": true,  "supports_vision": true,  "default_model": "gpt-4o-mini",      "enabled": true  },
     { "id": "gemini",   "supports_text": true,  "supports_vision": true,  "default_model": "gemini-2.0-flash", "enabled": true  },
     { "id": "deepseek", "supports_text": true,  "supports_vision": false, "default_model": "deepseek-chat",    "enabled": false },
-    { "id": "ollama",   "supports_text": true,  "supports_vision": true,  "default_model": null,               "enabled": false },
-    { "id": "paddle",   "supports_text": false, "supports_vision": true,  "default_model": null,               "enabled": false }
+    { "id": "ollama",   "supports_text": true,  "supports_vision": true,  "default_model": null,               "enabled": false }
   ]
 }
 ```
@@ -499,7 +447,7 @@ Vision AI request (image or PDF + text prompt). Always single-turn.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | binary | Yes | Image (JPEG/PNG/WebP/BMP/HEIC) or PDF, max 20 MB |
-| `provider` | string | Yes | `openai`, `gemini`, or `paddle` |
+| `provider` | string | Yes | `openai`, `gemini`, `anthropic`, etc. |
 | `prompt` | string | No* | Raw prompt text |
 | `template` | string | No* | Template name (e.g. `ocr-receipt-structured`) |
 | `variables` | JSON string | No | Template variable overrides |
@@ -507,7 +455,7 @@ Vision AI request (image or PDF + text prompt). Always single-turn.
 | `model_params` | JSON string | No | Same fields as text invoke |
 | `api_key` | string | No | Per-request provider API key |
 
-\* Either `prompt` or `template` is required for non-PADDLE providers. For `paddle`, both are ignored — raw OCR text is returned.
+\* Either `prompt` or `template` is required.
 
 **Response:** same shape as `/ai/invoke`.
 
@@ -762,7 +710,6 @@ Question: {question}
 | `openai` | Yes | Yes | Best quality; paid |
 | `gemini` | Yes | Yes | Good quality; free tier available |
 | `deepseek` | No | Yes | Text-only; cost-effective for reasoning |
-| `paddle` | Yes (OCR only) | No | Runs locally; no LLM reasoning |
 | `ollama` | Yes (llava) | Yes | Local, free; requires setup |
 
 ### Per-request API key
@@ -921,7 +868,7 @@ Test classes:
 ai-wrap/
 ├── mvnw / mvnw.cmd                     # Maven wrapper — no Maven installation required
 ├── pom.xml                             # Build (Quarkus 3.32, Java 25, Kotlin 2.3)
-├── docker-compose.yml                  # ai-wrap + PaddleOCR sidecar
+├── docker-compose.yml                  # ai-wrap service
 ├── .env.example                        # Template for environment variables
 ├── .dockerignore                       # Excludes target/, .git/, test sources
 ├── .github/
@@ -929,11 +876,6 @@ ai-wrap/
 │
 ├── src/main/docker/
 │   └── Dockerfile.jvm                 # Non-root JRE-25 image with HEALTHCHECK
-│
-├── paddle-ocr-sidecar/
-│   ├── main.py                        # FastAPI app — POST /ocr, GET /health
-│   ├── requirements.txt               # paddleocr, fastapi, uvicorn, pillow, pymupdf, pillow-heif
-│   └── Dockerfile                     # python:3.11-slim, pre-downloads OCR models
 │
 └── src/main/kotlin/com/adars/aiwrap/
     ├── Application.kt                 # @QuarkusMain entry point
@@ -962,7 +904,7 @@ ai-wrap/
     │   └── ContentGuard.kt           # Harmful-intent detection on assembled prompts
     │
     └── provider/
-        ├── AiProvider.kt             # Enum: OPENAI, GEMINI, DEEPSEEK, OLLAMA, PADDLE
+        ├── AiProvider.kt             # Enum of supported providers
         ├── ProviderResolver.kt       # Routes to correct service bean
         ├── openai/
         │   ├── OpenAiTextService.kt  # @Bulkhead @CircuitBreaker @Retry; dynamic build for api_key
@@ -972,8 +914,8 @@ ai-wrap/
         │   └── GeminiOcrService.kt
         ├── deepseek/
         │   └── DeepSeekTextService.kt  # OpenAI-compatible; dynamic build for api_key
-        └── paddle/
-            └── PaddleOcrClient.kt   # MicroProfile REST client for the OCR sidecar
+        ├── anthropic/                  # AnthropicTextService, AnthropicOcrService
+        └── azure/                      # AzureOpenAiTextService, AzureOpenAiOcrService
 
 src/main/resources/
     ├── application.properties

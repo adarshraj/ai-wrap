@@ -139,19 +139,17 @@ class AiResource @Inject constructor(
      *
      * Multipart form fields:
      *   file          — image (JPEG/PNG/WebP/BMP/HEIC) or PDF, max 20 MB
-     *   provider      — "openai" | "gemini" | "paddle"
+     *   provider      — "openai" | "gemini" | "anthropic" | ...
      *   prompt        — raw prompt text (use this OR template)
      *   template      — template name, e.g. "ocr-receipt-structured"
      *   variables     — JSON string, e.g. '{"hint":"grocery"}'  (optional)
      *   system_prompt — optional system prompt string
      *   model_params  — JSON string, e.g. '{"model":"gpt-4o","temperature":0.1}'
      *   api_key       — optional, informational
-     *
-     * For PADDLE: prompt/template/system_prompt are ignored; raw OCR text is returned.
      */
     @Operation(summary = "Vision invocation — image or PDF with prompt to LLM response")
     @APIResponses(
-        APIResponse(responseCode = "200", description = "LLM or OCR response"),
+        APIResponse(responseCode = "200", description = "LLM response"),
         APIResponse(responseCode = "400", description = "Bad request"),
         APIResponse(responseCode = "401", description = "Unauthorized"),
         APIResponse(responseCode = "413", description = "File too large"),
