@@ -10,11 +10,16 @@ import java.util.UUID
 
 internal const val REQUEST_ID_KEY = "aiwrap.requestId"
 internal const val REQUEST_START_KEY = "aiwrap.startTime"
+internal const val REQUEST_ID_HEADER = "X-Request-Id"
+
+/** Accept only safe, bounded request IDs from upstream. Prevents log poisoning. */
+private val SAFE_REQUEST_ID = Regex("^[A-Za-z0-9._-]{1,64}$")
 
 /**
  * Runs before every HTTP request.
  *
- * - Generates a short unique request ID (8 hex chars).
+ * - Reads the `X-Request-Id` header from the incoming request (typically injected by
+ *   Traefik at the edge). Accepts only safe values; otherwise generates a fresh ID.
  * - Puts it in SLF4J MDC so every log line emitted during this request automatically
  *   includes the ID (via the `%X{requestId}` token in the log format).
  * - Stores it and the start timestamp in request properties for the response filter.
@@ -26,7 +31,12 @@ class RequestLoggingFilter : ContainerRequestFilter {
     private val log: Logger = Logger.getLogger(RequestLoggingFilter::class.java)
 
     override fun filter(ctx: ContainerRequestContext) {
-        val requestId = UUID.randomUUID().toString().replace("-", "").take(8)
+        val incoming = ctx.getHeaderString(REQUEST_ID_HEADER)
+        val requestId = if (!incoming.isNullOrBlank() && SAFE_REQUEST_ID.matches(incoming)) {
+            incoming
+        } else {
+            UUID.randomUUID().toString().replace("-", "").take(8)
+        }
         val startTime = System.currentTimeMillis()
 
         MDC.put("requestId", requestId)

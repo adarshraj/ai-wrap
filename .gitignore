@@ -31,21 +31,11 @@ target/
 Thumbs.db
 ehthumbs.db
 
-# ── Python (PaddleOCR sidecar) ────────────────────────────────────────────────
+# ── Python ────────────────────────────────────────────────────────────────────
+.venv/
+venv/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-*.pyw
-.Python
-paddle-ocr-sidecar/.venv/
-paddle-ocr-sidecar/venv/
-paddle-ocr-sidecar/*.egg-info/
-paddle-ocr-sidecar/dist/
-paddle-ocr-sidecar/.pytest_cache/
-# PaddleOCR downloads large model files at runtime — never commit them
-paddle-ocr-sidecar/inference/
-paddle-ocr-sidecar/.paddleocr/
 
 # ── Runtime logs ──────────────────────────────────────────────────────────────
 logs/

@@ -71,20 +71,16 @@
       <artifactId>quarkus-smallrye-jwt</artifactId>
     </dependency>
 
-    <!-- ── REST client for PaddleOCR sidecar (renamed from rest-client-reactive in 3.9+) -->
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-rest-client</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-rest-client-jackson</artifactId>
-    </dependency>
-
     <!-- ── Health endpoint (/q/health) ─────────────────────────────────── -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-smallrye-health</artifactId>
+    </dependency>
+
+    <!-- ── OpenTelemetry (W3C traceparent propagation + traceId/spanId in MDC) -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-opentelemetry</artifactId>
     </dependency>
 
     <!-- ── LangChain4j provider extensions ──────────────────────────────── -->
@@ -98,6 +94,22 @@
       <groupId>io.quarkiverse.langchain4j</groupId>
       <artifactId>quarkus-langchain4j-ai-gemini</artifactId>
     </dependency>
+    <!-- Anthropic (Claude) -->
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-anthropic</artifactId>
+    </dependency>
+    <!-- Azure OpenAI -->
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-azure-openai</artifactId>
+    </dependency>
+    <!-- AWS Bedrock (requires AWS credentials — uncomment to enable)
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-bedrock</artifactId>
+    </dependency>
+    -->
     <!-- Ollama (local models: LLaVA for vision, Llama for text)
          Uncomment to enable local model support via Ollama.
          WARNING: Quarkus Dev Services will try to download the model on first start.

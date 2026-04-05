@@ -2,6 +2,10 @@ package com.adars.aiwrap.provider
 
 import com.adars.aiwrap.model.ModelParams
 import com.adars.aiwrap.model.ProviderResult
+import com.adars.aiwrap.provider.anthropic.AnthropicOcrService
+import com.adars.aiwrap.provider.anthropic.AnthropicTextService
+import com.adars.aiwrap.provider.azure.AzureOpenAiOcrService
+import com.adars.aiwrap.provider.azure.AzureOpenAiTextService
 import com.adars.aiwrap.provider.deepseek.DeepSeekTextService
 import com.adars.aiwrap.provider.gemini.GeminiOcrService
 import com.adars.aiwrap.provider.gemini.GeminiTextService
@@ -25,12 +29,18 @@ class ProviderResolver @Inject constructor(
     private val geminiOcr: GeminiOcrService,
     private val geminiText: GeminiTextService,
     private val deepSeekText: DeepSeekTextService,
+    private val anthropicOcr: AnthropicOcrService,
+    private val anthropicText: AnthropicTextService,
+    private val azureOpenAiOcr: AzureOpenAiOcrService,
+    private val azureOpenAiText: AzureOpenAiTextService,
 ) {
     // ── Known base URLs for OpenAI-compatible free-tier providers ────────────
     private val GROQ_URL       = "https://api.groq.com/openai/v1"
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1"
     private val MISTRAL_URL    = "https://api.mistral.ai/v1"
     private val CEREBRAS_URL   = "https://api.cerebras.ai/v1"
+    private val XAI_URL        = "https://api.x.ai/v1"
+    private val COHERE_URL     = "https://api.cohere.com/compatibility/v1"
 
     /**
      * Returns params with [knownUrl] injected as base_url if the caller didn't already supply one.
@@ -42,7 +52,6 @@ class ProviderResolver @Inject constructor(
     /**
      * Returns a function (prompt, imageBase64, mimeType) -> ProviderResult for vision-capable providers.
      * [systemPrompt] and [params] apply to the request; nulls use configured defaults.
-     * PADDLE is handled directly by AiService via the REST sidecar client.
      */
     fun visionFunction(
         provider: AiProvider,
@@ -53,6 +62,8 @@ class ProviderResolver @Inject constructor(
         when (provider) {
             AiProvider.OPENAI -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
             AiProvider.GEMINI -> { prompt, b64, mime -> geminiOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
+            AiProvider.ANTHROPIC -> { prompt, b64, mime -> anthropicOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
+            AiProvider.AZURE_OPENAI -> { prompt, b64, mime -> azureOpenAiOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
             AiProvider.GROQ -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, withBaseUrl(params, GROQ_URL), apiKey) }
             AiProvider.OPENROUTER -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, withBaseUrl(params, OPENROUTER_URL), apiKey) }
             AiProvider.MISTRAL -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, withBaseUrl(params, MISTRAL_URL), apiKey) }
@@ -64,10 +75,13 @@ class ProviderResolver @Inject constructor(
                 "Cerebras does not support vision/image input. Use GROQ, OPENAI, GEMINI, or OPENROUTER."
             )
             AiProvider.DEEPSEEK -> throw UnsupportedOperationException(
-                "DeepSeek does not support vision/image input. Use OPENAI, GEMINI, or PADDLE."
+                "DeepSeek does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
             )
-            AiProvider.PADDLE -> throw UnsupportedOperationException(
-                "PADDLE is handled directly by AiService via the REST sidecar client."
+            AiProvider.XAI -> throw UnsupportedOperationException(
+                "xAI does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
+            )
+            AiProvider.COHERE -> throw UnsupportedOperationException(
+                "Cohere does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
             )
         }
 
@@ -85,16 +99,17 @@ class ProviderResolver @Inject constructor(
             AiProvider.OPENAI -> { msgs -> openAiText.chat(msgs, params, apiKey) }
             AiProvider.GEMINI -> { msgs -> geminiText.chat(msgs, params, apiKey) }
             AiProvider.DEEPSEEK -> { msgs -> deepSeekText.chat(msgs, params, apiKey) }
+            AiProvider.ANTHROPIC -> { msgs -> anthropicText.chat(msgs, params, apiKey) }
+            AiProvider.AZURE_OPENAI -> { msgs -> azureOpenAiText.chat(msgs, params, apiKey) }
             AiProvider.GROQ -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, GROQ_URL), apiKey) }
             AiProvider.OPENROUTER -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, OPENROUTER_URL), apiKey) }
             AiProvider.MISTRAL -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, MISTRAL_URL), apiKey) }
             AiProvider.CEREBRAS -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, CEREBRAS_URL), apiKey) }
+            AiProvider.XAI -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, XAI_URL), apiKey) }
+            AiProvider.COHERE -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, COHERE_URL), apiKey) }
             AiProvider.OPENAI_COMPATIBLE -> { msgs -> openAiText.chat(msgs, params, apiKey) }
             AiProvider.OLLAMA -> throw UnsupportedOperationException(
                 "Ollama support is not enabled. Enable the quarkus-langchain4j-ollama dependency in pom.xml."
-            )
-            AiProvider.PADDLE -> throw UnsupportedOperationException(
-                "PADDLE is an OCR-only provider and cannot handle text prompts."
             )
         }
 }

@@ -24,12 +24,9 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-llava}
       OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-llama3.2}
-      # PaddleOCR sidecar
-      PADDLE_OCR_URL: http://paddle-ocr:8091
-      PADDLE_OCR_ENABLED: ${PADDLE_OCR_ENABLED:-false}
       # CORS — set to the origin of your calling app
       AI_WRAP_ALLOWED_ORIGIN: ${AI_WRAP_ALLOWED_ORIGIN:-http://localhost:5173}
-      # Limits — keep in sync with paddle-ocr sidecar
+      # Limits
       AI_WRAP_MAX_UPLOAD_BYTES: ${AI_WRAP_MAX_UPLOAD_BYTES:-20971520}
       AI_WRAP_MAX_BODY_SIZE: ${AI_WRAP_MAX_BODY_SIZE:-50M}
       AI_WRAP_MAX_PROMPT_CHARS: ${AI_WRAP_MAX_PROMPT_CHARS:-200000}
@@ -37,12 +34,7 @@ services:
       AI_WRAP_RATE_LIMIT_RPM: ${AI_WRAP_RATE_LIMIT_RPM:-30}
       AI_WRAP_RATE_LIMIT_RPD: ${AI_WRAP_RATE_LIMIT_RPD:-1000}
     networks:
-      - wrap-internal
       - ai-wrap-network
-    depends_on:
-      paddle-ocr:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/q/health/ready"]
       interval: 10s
@@ -50,35 +42,7 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── PaddleOCR Python/FastAPI sidecar ────────────────────────────────────────
-  # Only started when the "ocr" profile is active: docker compose --profile ocr up
-  paddle-ocr:
-    profiles: [ocr]
-    build:
-      context: ./paddle-ocr-sidecar
-      dockerfile: Dockerfile
-    image: ai-wrap-paddle-ocr:latest
-    restart: unless-stopped
-    # NOT exposed to the host — only ai-wrap reaches it via wrap-internal network
-    expose:
-      - "8091"
-    environment:
-      AI_WRAP_MAX_UPLOAD_BYTES: ${AI_WRAP_MAX_UPLOAD_BYTES:-20971520}
-    networks:
-      - wrap-internal
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      # PaddleOCR model loading can take up to 60s on first start
-      start_period: 60s
-
 networks:
-  # Internal network — only ai-wrap ↔ PaddleOCR sidecar
-  wrap-internal:
-    driver: bridge
-
   # Shared external network — calling apps join this to reach ai-wrap
   # Create it once with: docker network create ai-wrap-network
   ai-wrap-network:

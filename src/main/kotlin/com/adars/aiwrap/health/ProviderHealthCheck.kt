@@ -8,8 +8,7 @@ import org.eclipse.microprofile.health.Readiness
 
 /**
  * Readiness check that verifies at least one AI provider is configured.
- * Reports UP only when at least one LLM provider has a real API key (not "DISABLED")
- * or PaddleOCR sidecar is enabled.
+ * Reports UP only when at least one LLM provider has a real API key (not "DISABLED").
  *
  * Exposed at /q/health/ready as the "ai-providers" check.
  */
@@ -22,22 +21,28 @@ class ProviderHealthCheck @jakarta.inject.Inject constructor(
     private val geminiKey: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.api-key", defaultValue = "DISABLED")
     private val deepSeekKey: String,
-    @ConfigProperty(name = "aiwrap.paddle-ocr.enabled", defaultValue = "false")
-    private val paddleEnabled: Boolean,
+    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.api-key", defaultValue = "DISABLED")
+    private val anthropicKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.api-key", defaultValue = "DISABLED")
+    private val azureOpenAiKey: String,
 ) : HealthCheck {
 
     override fun call(): HealthCheckResponse {
         val openAiEnabled = openAiKey != "DISABLED"
         val geminiEnabled = geminiKey != "DISABLED"
         val deepSeekEnabled = deepSeekKey != "DISABLED"
-        val anyEnabled = openAiEnabled || geminiEnabled || deepSeekEnabled || paddleEnabled
+        val anthropicEnabled = anthropicKey != "DISABLED"
+        val azureOpenAiEnabled = azureOpenAiKey != "DISABLED"
+        val anyEnabled = openAiEnabled || geminiEnabled || deepSeekEnabled ||
+            anthropicEnabled || azureOpenAiEnabled
 
         return HealthCheckResponse.named("ai-providers")
             .status(anyEnabled)
             .withData("openai", if (openAiEnabled) "enabled" else "disabled")
             .withData("gemini", if (geminiEnabled) "enabled" else "disabled")
             .withData("deepseek", if (deepSeekEnabled) "enabled" else "disabled")
-            .withData("paddle-ocr", if (paddleEnabled) "enabled" else "disabled")
+            .withData("anthropic", if (anthropicEnabled) "enabled" else "disabled")
+            .withData("azure-openai", if (azureOpenAiEnabled) "enabled" else "disabled")
             .build()
     }
 }

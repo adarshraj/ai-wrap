@@ -41,11 +41,4 @@ class ProviderHealthCheckTest {
             .body("checks.find{it.name=='ai-providers'}.data.gemini", equalTo("enabled"))
             .body("checks.find{it.name=='ai-providers'}.data.deepseek", equalTo("enabled"))
     }
-
-    @Test
-    fun `paddle-ocr reports disabled in test profile`() {
-        given().`when`().get("/q/health/ready").then()
-            .statusCode(200)
-            .body("checks.find{it.name=='ai-providers'}.data.'paddle-ocr'", equalTo("disabled"))
-    }
 }

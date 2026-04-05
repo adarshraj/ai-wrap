@@ -8,7 +8,6 @@ import com.adars.aiwrap.model.TemplateInfo
 import com.adars.aiwrap.model.ChatMessage as ChatMessageDto
 import com.adars.aiwrap.provider.AiProvider
 import com.adars.aiwrap.provider.ProviderResolver
-import com.adars.aiwrap.provider.paddle.PaddleOcrClient
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.ChatMessage
 import dev.langchain4j.data.message.SystemMessage
@@ -17,10 +16,8 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import jakarta.ws.rs.BadRequestException
 import org.eclipse.microprofile.config.inject.ConfigProperty
-import org.eclipse.microprofile.rest.client.inject.RestClient
 import org.jboss.logging.Logger
 import java.io.File
-import java.nio.file.Files
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
@@ -50,9 +47,6 @@ private data class ResolvedPrompt(val system: String?, val user: String)
 @ApplicationScoped
 class AiService @Inject constructor(
     private val resolver: ProviderResolver,
-    @RestClient private val paddleClient: PaddleOcrClient,
-    @ConfigProperty(name = "aiwrap.paddle-ocr.enabled", defaultValue = "false")
-    private val paddleEnabled: Boolean,
     @ConfigProperty(name = "quarkus.langchain4j.openai.openai-text.chat-model.model-name", defaultValue = "gpt-4o-mini")
     private val openAiDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.openai-text.api-key", defaultValue = "DISABLED")
@@ -65,6 +59,14 @@ class AiService @Inject constructor(
     private val deepSeekDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.api-key", defaultValue = "DISABLED")
     private val deepSeekApiKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.chat-model.model-name", defaultValue = "claude-sonnet-4-20250514")
+    private val anthropicDefaultModel: String,
+    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.api-key", defaultValue = "DISABLED")
+    private val anthropicApiKey: String,
+    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.chat-model.deployment-name", defaultValue = "gpt-4o-mini")
+    private val azureOpenAiDefaultModel: String,
+    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.api-key", defaultValue = "DISABLED")
+    private val azureOpenAiApiKey: String,
     @ConfigProperty(name = "aiwrap.max-prompt-chars", defaultValue = "200000")
     private val maxPromptChars: Int,
     private val registry: io.micrometer.core.instrument.MeterRegistry,
@@ -139,15 +141,10 @@ class AiService @Inject constructor(
         val start = System.currentTimeMillis()
 
         val (resultText, inputTokens, outputTokens) = try {
-            if (provider == AiProvider.PADDLE) {
-                if (!paddleEnabled) throw IllegalStateException("PaddleOCR sidecar is not enabled (PADDLE_OCR_ENABLED=false)")
-                Triple(paddleViaClient(imageBytes, mimeType), null, null)
-            } else {
-                val resolved = resolvePrompt(rawPrompt, systemPromptOverride, templateName, variables)
-                val base64 = Base64.getEncoder().encodeToString(imageBytes)
-                val providerResult = resolver.visionFunction(provider, resolved.system, modelParams, apiKey)(resolved.user, base64, mimeType)
-                Triple(providerResult.text, providerResult.inputTokens, providerResult.outputTokens)
-            }
+            val resolved = resolvePrompt(rawPrompt, systemPromptOverride, templateName, variables)
+            val base64 = Base64.getEncoder().encodeToString(imageBytes)
+            val providerResult = resolver.visionFunction(provider, resolved.system, modelParams, apiKey)(resolved.user, base64, mimeType)
+            Triple(providerResult.text, providerResult.inputTokens, providerResult.outputTokens)
         } catch (e: Exception) {
             val elapsed = System.currentTimeMillis() - start
             registry.counter("ai.requests.total", "provider", provider.name.lowercase(), "type", "vision", "status", "failure").increment()
@@ -191,12 +188,16 @@ class AiService @Inject constructor(
                 defaultModel = deepSeekDefaultModel, enabled = deepSeekApiKey != "DISABLED",
             ),
             ProviderInfo(
-                id = "ollama", supportsText = true, supportsVision = true,
-                defaultModel = null, enabled = false,
+                id = "anthropic", supportsText = true, supportsVision = true,
+                defaultModel = anthropicDefaultModel, enabled = anthropicApiKey != "DISABLED",
             ),
             ProviderInfo(
-                id = "paddle", supportsText = false, supportsVision = true,
-                defaultModel = null, enabled = paddleEnabled,
+                id = "azure_openai", supportsText = true, supportsVision = true,
+                defaultModel = azureOpenAiDefaultModel, enabled = azureOpenAiApiKey != "DISABLED",
+            ),
+            ProviderInfo(
+                id = "ollama", supportsText = true, supportsVision = true,
+                defaultModel = null, enabled = false,
             ),
         )
         return AiMetaResponse(templates = listTemplates(), providers = providers)
@@ -392,14 +393,4 @@ class AiService @Inject constructor(
         }
     }
 
-    private fun paddleViaClient(imageBytes: ByteArray, mimeType: String): String {
-        val ext = mimeType.substringAfter("/").replace("jpeg", "jpg")
-        val tmp = Files.createTempFile("paddle-ocr-", ".$ext").toFile()
-        try {
-            tmp.writeBytes(imageBytes)
-            return paddleClient.processImage(tmp).text
-        } finally {
-            tmp.delete()
-        }
-    }
 }
