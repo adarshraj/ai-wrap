@@ -5,5 +5,5 @@ paddleocr==2.9.1
 Pillow==12.1.1
 numpy==1.26.4
 python-multipart==0.0.22
-pymupdf==1.24.10
+pypdfium2==4.30.1
 pillow-heif==0.18.0

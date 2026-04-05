@@ -8,7 +8,7 @@ import io
 import logging
 from typing import List
 
-import fitz  # PyMuPDF
+import pypdfium2 as pdfium
 import numpy as np
 import pillow_heif
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -76,12 +76,11 @@ def _ocr_image(image: Image.Image) -> tuple[List[OcrLine], List[str]]:
 
 def _images_from_pdf(raw: bytes) -> List[Image.Image]:
     """Render each PDF page to a PIL Image at 150 DPI."""
-    doc = fitz.open(stream=raw, filetype="pdf")
+    doc = pdfium.PdfDocument(raw)
     images = []
     for page in doc:
-        mat = fitz.Matrix(150 / 72, 150 / 72)  # 150 DPI
-        pix = page.get_pixmap(matrix=mat, alpha=False)
-        images.append(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+        bitmap = page.render(scale=150 / 72)
+        images.append(bitmap.to_pil().convert("RGB"))
     doc.close()
     return images
 
