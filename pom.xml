@@ -77,6 +77,12 @@
       <artifactId>quarkus-smallrye-health</artifactId>
     </dependency>
 
+    <!-- ── OpenTelemetry (W3C traceparent propagation + traceId/spanId in MDC) -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-opentelemetry</artifactId>
+    </dependency>
+
     <!-- ── LangChain4j provider extensions ──────────────────────────────── -->
     <!-- OpenAI (also used for DeepSeek via base-url override) -->
     <dependency>
