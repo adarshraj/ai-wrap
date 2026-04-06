@@ -36,6 +36,7 @@ A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls 
 ```
 Your App (any client)
         │  Authorization: Bearer <jwt>
+        │  GET  /ai/models          (list provider models)
         │  POST /ai/invoke          (text)
         │  POST /ai/invoke/vision   (image / PDF + text)
         ▼
@@ -68,7 +69,7 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 ## Features
 
 ### Core
-- **Three endpoints**: `GET /ai/meta` (discovery), `POST /ai/invoke` (text), `POST /ai/invoke/vision` (image/PDF)
+- **Four endpoints**: `GET /ai/meta` (discovery), `GET /ai/models` (model listing), `POST /ai/invoke` (text), `POST /ai/invoke/vision` (image/PDF)
 - **Multi-turn chat**: pass a full `messages` array for conversation history
 - **Prompt templates**: server-side `.txt` files with `{placeholder}` substitution and an optional system-prompt section
 - **Per-request model overrides**: model, temperature, max_tokens, top_p, stop, frequency_penalty, presence_penalty, json_mode, timeout_seconds
@@ -362,6 +363,52 @@ Response is cached for 5 minutes (`Cache-Control: public, max-age=300`).
   ]
 }
 ```
+
+---
+
+### `GET /ai/models?provider=...&api_key=...`
+
+List models available from a specific provider. Proxies the upstream provider's model listing API and returns a unified response.
+
+Cached for 1 minute (`Cache-Control: public, max-age=60`).
+
+**Query parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `provider` | Yes | Provider ID (e.g. `openai`, `openrouter`, `gemini`, `anthropic`, `groq`, `mistral`, `cerebras`, `xai`, `cohere`, `deepseek`) |
+| `api_key` | No | Per-request API key. If omitted, the server-configured key or environment variable is used. |
+
+**Response:**
+```json
+{
+  "provider": "openrouter",
+  "models": [
+    { "id": "meta-llama/llama-3-8b-instruct:free", "name": "meta-llama/llama-3-8b-instruct:free", "created": 1234567890, "owned_by": "meta" },
+    { "id": "google/gemma-2-9b-it:free", "name": "google/gemma-2-9b-it:free", "created": 1234567890, "owned_by": "google" }
+  ]
+}
+```
+
+`created` and `owned_by` are omitted when not available from the upstream provider.
+
+**Supported providers:**
+
+| Provider | API used |
+|----------|----------|
+| `openai`, `deepseek`, `groq`, `openrouter`, `mistral`, `cerebras`, `xai`, `cohere` | OpenAI-compatible `GET /v1/models` |
+| `anthropic` | `GET /v1/models` with `x-api-key` header |
+| `gemini` | `GET /v1beta/models?key=...` |
+| `azure_openai` | Not supported (model availability depends on deployment) |
+| `ollama` | Not supported (disabled) |
+
+**Error responses:**
+
+| Status | Cause |
+|--------|-------|
+| `400` | Unknown provider, missing API key, or unsupported provider |
+| `401` | Missing or invalid JWT |
+| `500` | Upstream provider error |
 
 ---
 
@@ -710,7 +757,16 @@ Question: {question}
 | `openai` | Yes | Yes | Best quality; paid |
 | `gemini` | Yes | Yes | Good quality; free tier available |
 | `deepseek` | No | Yes | Text-only; cost-effective for reasoning |
+| `anthropic` | Yes | Yes | Claude models; paid |
+| `azure_openai` | Yes | Yes | Azure-hosted OpenAI; requires deployment config |
+| `groq` | Yes | Yes | Llama/Kimi models; 30 RPM free |
+| `openrouter` | Yes | Yes | Routes to many models; 32+ free models |
+| `mistral` | Yes | Yes | Mistral models; 1B tokens/month free |
+| `cerebras` | No | Yes | Text-only; fastest inference |
+| `xai` | No | Yes | Grok models; text-only |
+| `cohere` | No | Yes | Command models; text-only |
 | `ollama` | Yes (llava) | Yes | Local, free; requires setup |
+| `openai_compatible` | Yes | Yes | Any OpenAI-compatible endpoint; requires `base_url` in `model_params` |
 
 ### Per-request API key
 
@@ -894,10 +950,12 @@ ai-wrap/
     │                                 # ProviderResult (text + token usage from provider)
     ├── resource/
     │   └── AiResource.kt             # GET /ai/meta
+    │                                 # GET /ai/models
     │                                 # POST /ai/invoke
     │                                 # POST /ai/invoke/vision
     ├── service/
     │   ├── AiService.kt              # Template loading, prompt resolution, provider dispatch
+    │   ├── ModelListService.kt       # Proxies upstream provider model listing APIs
     │   ├── AuditService.kt           # Structured JSON audit log (logs/audit.log)
     │   ├── RateLimiter.kt            # Per-user sliding-minute + daily quota
     │   ├── PromptGuard.kt            # Injection detection on user-supplied values

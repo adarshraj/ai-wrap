@@ -9,6 +9,7 @@ import com.adars.aiwrap.model.ModelParams
 import com.adars.aiwrap.provider.AiProvider
 import com.adars.aiwrap.service.AiService
 import com.adars.aiwrap.service.AuditService
+import com.adars.aiwrap.service.ModelListService
 import com.adars.aiwrap.service.RateLimitExceededException
 import com.adars.aiwrap.service.RateLimiter
 import org.eclipse.microprofile.faulttolerance.exceptions.BulkheadException
@@ -46,6 +47,7 @@ import org.jboss.resteasy.reactive.multipart.FileUpload
 @Produces(MediaType.APPLICATION_JSON)
 class AiResource @Inject constructor(
     private val aiService: AiService,
+    private val modelListService: ModelListService,
     private val rateLimiter: RateLimiter,
     private val securityIdentity: SecurityIdentity,
     private val objectMapper: ObjectMapper,
@@ -67,6 +69,42 @@ class AiResource @Inject constructor(
     fun meta(): Response = Response.ok(aiService.meta())
         .header("Cache-Control", "public, max-age=300")
         .build()
+
+    /**
+     * GET /ai/models?provider=openrouter&api_key=... — list models available from a provider.
+     *
+     * Proxies the upstream provider's model listing API and returns a unified response.
+     * The api_key query param is optional if the server has a configured key for the provider.
+     */
+    @Operation(summary = "List models — available models for a given provider")
+    @APIResponses(
+        APIResponse(responseCode = "200", description = "Model list"),
+        APIResponse(responseCode = "400", description = "Bad request — unknown provider or missing API key"),
+        APIResponse(responseCode = "401", description = "Unauthorized"),
+        APIResponse(responseCode = "500", description = "Upstream provider error"),
+    )
+    @GET
+    @Path("/models")
+    @RolesAllowed("**")
+    fun models(
+        @QueryParam("provider") provider: String,
+        @QueryParam("api_key") apiKey: String?,
+    ): Response {
+        return try {
+            val aiProvider = AiProvider.fromString(provider)
+            val result = modelListService.listModels(aiProvider, apiKey)
+            Response.ok(result)
+                .header("Cache-Control", "public, max-age=60")
+                .build()
+        } catch (e: IllegalArgumentException) {
+            Response.status(Response.Status.BAD_REQUEST).entity(errorBody(e.message)).build()
+        } catch (e: UnsupportedOperationException) {
+            Response.status(Response.Status.BAD_REQUEST).entity(errorBody(e.message)).build()
+        } catch (e: Exception) {
+            log.errorf(e, "models failed — provider=%s", provider)
+            Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(errorBody(e.message)).build()
+        }
+    }
 
     /**
      * POST /ai/invoke — text-only AI invocation.
