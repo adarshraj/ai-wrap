@@ -57,8 +57,15 @@ class RateLimiter @jakarta.inject.Inject constructor(
             )
         }
 
-        val dayKey = "$userId:${LocalDate.now()}"
-        val dayCount = dailyCounters.compute(dayKey) { _, v -> (v ?: AtomicLong(0)).also { it.incrementAndGet() } }!!.get()
+        // Evict daily counters from previous days
+        val today = LocalDate.now()
+        dailyCounters.keys.removeIf { k ->
+            val keyDate = runCatching { LocalDate.parse(k.substringAfterLast(':')) }.getOrNull()
+            keyDate != null && keyDate.isBefore(today)
+        }
+
+        val dayKey = "$userId:$today"
+        val dayCount = dailyCounters.compute(dayKey) { _, v -> (v ?: AtomicLong(0)).also { it.incrementAndGet() } }?.get() ?: 0
         if (dayCount > requestsPerDay) {
             log.warnf("Daily rate limit exceeded for user=%s count=%d limit=%d", userId, dayCount, requestsPerDay)
             throw RateLimitExceededException(

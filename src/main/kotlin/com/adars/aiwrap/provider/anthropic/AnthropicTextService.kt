@@ -16,10 +16,15 @@ import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.eclipse.microprofile.faulttolerance.Bulkhead
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker
 import org.eclipse.microprofile.faulttolerance.Retry
+import org.jboss.logging.Logger
 import java.time.Duration
 
 @ApplicationScoped
 class AnthropicTextService {
+
+    companion object {
+        private val log: Logger = Logger.getLogger(AnthropicTextService::class.java)
+    }
 
     @Inject
     @field:ModelName("anthropic-text")
@@ -59,6 +64,9 @@ class AnthropicTextService {
             .build()
 
     private fun buildParams(params: ModelParams?): ChatRequestParameters {
+        if (params?.frequencyPenalty != null || params?.presencePenalty != null) {
+            log.warn("Anthropic does not support frequency_penalty or presence_penalty — they will be ignored.")
+        }
         val b = ChatRequestParameters.builder()
         params?.model?.let { b.modelName(it) }
         params?.temperature?.let { b.temperature(it) }

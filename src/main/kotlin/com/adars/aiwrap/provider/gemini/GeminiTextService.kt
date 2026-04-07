@@ -47,6 +47,9 @@ class GeminiTextService {
     }
 
     private fun buildParams(params: ModelParams?): ChatRequestParameters {
+        if (params?.frequencyPenalty != null || params?.presencePenalty != null) {
+            log.warn("Gemini does not support frequency_penalty or presence_penalty — they will be ignored.")
+        }
         val b = ChatRequestParameters.builder()
         params?.model?.let { b.modelName(it) }
         params?.temperature?.let { b.temperature(it) }

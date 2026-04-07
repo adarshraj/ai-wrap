@@ -12,14 +12,12 @@ data class ProviderResult(
     val outputTokens: Int?,
 )
 
-// ── Meta / discovery ─────────────────────────────────────────────────────────
+// ── Templates / discovery ────────────────────────────────────────────────────
 
-/** Response for GET /ai/meta */
-data class AiMetaResponse(
+/** Response for GET /ai/templates */
+data class AiTemplatesResponse(
     /** All available prompt templates with their variable placeholders. */
     val templates: List<TemplateInfo>,
-    /** All configured providers and their capabilities. */
-    val providers: List<ProviderInfo>,
 )
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -42,8 +40,6 @@ data class ProviderInfo(
     val id: String,
     @JsonProperty("supports_text") val supportsText: Boolean,
     @JsonProperty("supports_vision") val supportsVision: Boolean,
-    /** Default model configured in application.properties. */
-    @JsonProperty("default_model") val defaultModel: String?,
     /** Whether this provider is currently enabled (API key present and non-disabled). */
     val enabled: Boolean,
 )
@@ -51,14 +47,13 @@ data class ProviderInfo(
 // ── Model parameters ─────────────────────────────────────────────────────────
 
 /**
- * Optional per-request LLM tuning knobs.
- * Omitted fields fall back to the defaults configured in application.properties.
+ * Per-request LLM tuning knobs. [model] is required — call GET /ai/models?provider=... to discover available models.
  *
  * Example:
  *   { "model": "gpt-4o", "temperature": 0.7, "max_tokens": 4000, "top_p": 0.9, "json_mode": true }
  */
 data class ModelParams(
-    /** Provider-specific model ID, e.g. "gpt-4o", "gemini-2.5-flash", "deepseek-reasoner". */
+    /** Required. Provider-specific model ID, e.g. "gpt-4o", "gemini-2.5-flash", "deepseek-reasoner". */
     val model: String? = null,
     /** Sampling temperature 0.0 – 2.0. Lower = more deterministic, higher = more creative. */
     val temperature: Double? = null,
@@ -103,57 +98,10 @@ data class ChatMessage(
 
 // ── Text invoke ───────────────────────────────────────────────────────────────
 
-/**
- * Body for POST /ai/invoke (text-only).
- *
- * **Single-turn**: supply [prompt] (raw text) OR [template] + [variables].
- * **Multi-turn**: supply [messages] — a full conversation history with role/content pairs.
- * When [messages] is provided it takes precedence over [prompt]/[template].
- *
- * [system_prompt] overrides the system persona for either mode; if a template already
- * defines a system section (content before `---`), this field overrides it.
- */
-data class AiInvokeRequest(
-    /** One of: openai, gemini, deepseek, ollama */
-    val provider: String,
-    /**
-     * Raw prompt sent directly to the LLM as the user message. Takes precedence over [template].
-     * Ignored when [messages] is provided.
-     */
-    val prompt: String? = null,
-    /**
-     * Template file name without extension, e.g. "insights-qa".
-     * Used only when [prompt] and [messages] are not provided. Must be [a-zA-Z0-9_-]+.
-     */
-    val template: String? = null,
-    /** Key → value pairs matching the {placeholders} in the template. Ignored when [prompt] is provided. */
-    val variables: Map<String, String> = emptyMap(),
-    /**
-     * Optional system prompt — sets the AI's role, persona, or constraints for this request.
-     * Overrides the system section in the template (if any).
-     * In multi-turn mode, replaces any existing system message at the start of the [messages] list.
-     */
-    @JsonProperty("system_prompt") val systemPrompt: String? = null,
-    /**
-     * Full conversation history for multi-turn chat. Each item has a [role] (user/assistant/system)
-     * and [content]. When provided, takes precedence over [prompt] and [template].
-     * Include all previous turns; the service forwards them to the LLM as-is.
-     */
-    val messages: List<ChatMessage>? = null,
-    /** Optional per-request model/temperature/token overrides. Defaults come from application.properties. */
-    @JsonProperty("model_params") val modelParams: ModelParams? = null,
-    /** Optional per-request API key for the chosen provider. Overrides the server-configured key. */
-    @JsonProperty("api_key") val apiKey: String? = null,
-) {
-    override fun toString(): String =
-        "AiInvokeRequest(provider=$provider, template=$template, prompt=${prompt?.take(50)}, " +
-        "api_key=${if (apiKey != null) "[REDACTED]" else "null"})"
-}
-
-// ── Shared response ───────────────────────────────────────────────────────────
+// ── Response ─────────────────────────────────────────────────────────────────
 
 /**
- * Unified response for both /ai/invoke and /ai/invoke/vision.
+ * Unified response for POST /ai/chat (text and vision).
  * The [result] is the raw LLM output; the caller is responsible for parsing JSON if needed.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)

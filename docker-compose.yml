@@ -15,13 +15,24 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-DISABLED}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-DISABLED}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-DISABLED}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-DISABLED}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-DISABLED}
+      AZURE_OPENAI_RESOURCE_NAME: ${AZURE_OPENAI_RESOURCE_NAME:-placeholder}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      # Free-tier provider keys (optional — can also be supplied per-request)
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
       # Model overrides
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.0-flash}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
-      # Ollama (optional — point to a running Ollama instance)
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Ollama (local or cloud — uses OpenAI-compatible API, no extra dependency)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-llava}
       OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-llama3.2}
       # CORS — set to the origin of your calling app

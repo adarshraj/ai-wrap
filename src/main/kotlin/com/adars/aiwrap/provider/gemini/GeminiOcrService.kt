@@ -42,7 +42,7 @@ class GeminiOcrService {
         }
         val userMessage = UserMessage.from(
             TextContent.from(prompt),
-            ImageContent.from(imageBase64, mimeType)
+            ImageContent.from(imageBase64, mimeType, ImageContent.DetailLevel.HIGH)
         )
         val messages = buildList {
             if (!systemPrompt.isNullOrBlank()) add(SystemMessage.from(systemPrompt))
@@ -61,6 +61,9 @@ class GeminiOcrService {
     }
 
     private fun buildParams(params: ModelParams?): ChatRequestParameters {
+        if (params?.frequencyPenalty != null || params?.presencePenalty != null) {
+            log.warn("Gemini does not support frequency_penalty or presence_penalty — they will be ignored.")
+        }
         val b = ChatRequestParameters.builder()
         params?.model?.let { b.modelName(it) }
         params?.temperature?.let { b.temperature(it) }

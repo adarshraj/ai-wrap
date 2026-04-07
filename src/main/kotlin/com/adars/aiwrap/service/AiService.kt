@@ -1,7 +1,7 @@
 package com.adars.aiwrap.service
 
 import com.adars.aiwrap.model.AiInvokeResponse
-import com.adars.aiwrap.model.AiMetaResponse
+import com.adars.aiwrap.model.AiTemplatesResponse
 import com.adars.aiwrap.model.ModelParams
 import com.adars.aiwrap.model.ProviderInfo
 import com.adars.aiwrap.model.TemplateInfo
@@ -47,24 +47,14 @@ private data class ResolvedPrompt(val system: String?, val user: String)
 @ApplicationScoped
 class AiService @Inject constructor(
     private val resolver: ProviderResolver,
-    @ConfigProperty(name = "quarkus.langchain4j.openai.openai-text.chat-model.model-name", defaultValue = "gpt-4o-mini")
-    private val openAiDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.openai-text.api-key", defaultValue = "DISABLED")
     private val openAiApiKey: String,
-    @ConfigProperty(name = "quarkus.langchain4j.ai.gemini.gemini-text.chat-model.model-id", defaultValue = "gemini-2.0-flash")
-    private val geminiDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.ai.gemini.gemini-text.api-key", defaultValue = "DISABLED")
     private val geminiApiKey: String,
-    @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.chat-model.model-name", defaultValue = "deepseek-chat")
-    private val deepSeekDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.api-key", defaultValue = "DISABLED")
     private val deepSeekApiKey: String,
-    @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.chat-model.model-name", defaultValue = "claude-sonnet-4-20250514")
-    private val anthropicDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.anthropic.anthropic-text.api-key", defaultValue = "DISABLED")
     private val anthropicApiKey: String,
-    @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.chat-model.deployment-name", defaultValue = "gpt-4o-mini")
-    private val azureOpenAiDefaultModel: String,
     @ConfigProperty(name = "quarkus.langchain4j.azure-openai.azure-openai-text.api-key", defaultValue = "DISABLED")
     private val azureOpenAiApiKey: String,
     @ConfigProperty(name = "aiwrap.max-prompt-chars", defaultValue = "200000")
@@ -90,6 +80,10 @@ class AiService @Inject constructor(
         modelParams: ModelParams?,
         apiKey: String?,
     ): AiInvokeResponse {
+        if (modelParams?.model.isNullOrBlank()) throw BadRequestException(
+            "model_params.model is required. Call GET /ai/models?provider=${provider.name.lowercase()} to discover available models."
+        )
+
         val messages = buildMessageList(rawPrompt, templateName, variables, systemPromptOverride, multiTurnMessages)
 
         val start = System.currentTimeMillis()
@@ -138,6 +132,10 @@ class AiService @Inject constructor(
         modelParams: ModelParams?,
         apiKey: String?,
     ): AiInvokeResponse {
+        if (modelParams?.model.isNullOrBlank()) throw BadRequestException(
+            "model_params.model is required. Call GET /ai/models?provider=${provider.name.lowercase()} to discover available models."
+        )
+
         val start = System.currentTimeMillis()
 
         val (resultText, inputTokens, outputTokens) = try {
@@ -173,35 +171,26 @@ class AiService @Inject constructor(
 
     // ── Meta / discovery ─────────────────────────────────────────────────────
 
-    fun meta(): AiMetaResponse {
-        val providers = listOf(
-            ProviderInfo(
-                id = "openai", supportsText = true, supportsVision = true,
-                defaultModel = openAiDefaultModel, enabled = openAiApiKey != "DISABLED",
-            ),
-            ProviderInfo(
-                id = "gemini", supportsText = true, supportsVision = true,
-                defaultModel = geminiDefaultModel, enabled = geminiApiKey != "DISABLED",
-            ),
-            ProviderInfo(
-                id = "deepseek", supportsText = true, supportsVision = false,
-                defaultModel = deepSeekDefaultModel, enabled = deepSeekApiKey != "DISABLED",
-            ),
-            ProviderInfo(
-                id = "anthropic", supportsText = true, supportsVision = true,
-                defaultModel = anthropicDefaultModel, enabled = anthropicApiKey != "DISABLED",
-            ),
-            ProviderInfo(
-                id = "azure_openai", supportsText = true, supportsVision = true,
-                defaultModel = azureOpenAiDefaultModel, enabled = azureOpenAiApiKey != "DISABLED",
-            ),
-            ProviderInfo(
-                id = "ollama", supportsText = true, supportsVision = true,
-                defaultModel = null, enabled = false,
-            ),
-        )
-        return AiMetaResponse(templates = listTemplates(), providers = providers)
+    fun templates(): AiTemplatesResponse {
+        return AiTemplatesResponse(templates = listTemplates())
     }
+
+    // ── Providers ─────────────────────────────────────────────────────────────
+
+    fun providers(): List<ProviderInfo> = listOf(
+        ProviderInfo(id = "openai", supportsText = true, supportsVision = true, enabled = openAiApiKey != "DISABLED"),
+        ProviderInfo(id = "gemini", supportsText = true, supportsVision = true, enabled = geminiApiKey != "DISABLED"),
+        ProviderInfo(id = "deepseek", supportsText = true, supportsVision = false, enabled = deepSeekApiKey != "DISABLED"),
+        ProviderInfo(id = "anthropic", supportsText = true, supportsVision = true, enabled = anthropicApiKey != "DISABLED"),
+        ProviderInfo(id = "azure_openai", supportsText = true, supportsVision = true, enabled = azureOpenAiApiKey != "DISABLED"),
+        ProviderInfo(id = "groq", supportsText = true, supportsVision = true, enabled = true),
+        ProviderInfo(id = "openrouter", supportsText = true, supportsVision = true, enabled = true),
+        ProviderInfo(id = "mistral", supportsText = true, supportsVision = true, enabled = true),
+        ProviderInfo(id = "cerebras", supportsText = true, supportsVision = false, enabled = true),
+        ProviderInfo(id = "xai", supportsText = true, supportsVision = false, enabled = true),
+        ProviderInfo(id = "cohere", supportsText = true, supportsVision = false, enabled = true),
+        ProviderInfo(id = "ollama", supportsText = true, supportsVision = true, enabled = true),
+    )
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

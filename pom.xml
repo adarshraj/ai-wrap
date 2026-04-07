@@ -110,15 +110,7 @@
       <artifactId>quarkus-langchain4j-bedrock</artifactId>
     </dependency>
     -->
-    <!-- Ollama (local models: LLaVA for vision, Llama for text)
-         Uncomment to enable local model support via Ollama.
-         WARNING: Quarkus Dev Services will try to download the model on first start.
-         Set OLLAMA_BASE_URL to point to an existing Ollama instance to avoid auto-download.
-    <dependency>
-      <groupId>io.quarkiverse.langchain4j</groupId>
-      <artifactId>quarkus-langchain4j-ollama</artifactId>
-    </dependency>
-    -->
+    <!-- Ollama is now routed through the OpenAI-compatible client — no dedicated dependency needed. -->
 
     <!-- ── Kotlin ────────────────────────────────────────────────────────── -->
     <dependency>

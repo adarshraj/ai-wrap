@@ -39,8 +39,11 @@ class ModelListService @Inject constructor(
 
     @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.api-key", defaultValue = "DISABLED")
     private val deepSeekApiKey: String,
-    @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.base-url", defaultValue = "https://api.deepseek.com")
+    @ConfigProperty(name = "quarkus.langchain4j.openai.deepseek.base-url", defaultValue = "https://api.deepseek.com/v1")
     private val deepSeekBaseUrl: String,
+
+    @ConfigProperty(name = "aiwrap.ollama.base-url", defaultValue = "http://localhost:11434/v1")
+    private val ollamaBaseUrl: String,
 ) {
     companion object {
         private val log: Logger = Logger.getLogger(ModelListService::class.java)
@@ -77,9 +80,7 @@ class ModelListService @Inject constructor(
             AiProvider.AZURE_OPENAI -> throw UnsupportedOperationException(
                 "Azure OpenAI model listing is not supported — models depend on your deployment configuration."
             )
-            AiProvider.OLLAMA -> throw UnsupportedOperationException(
-                "Ollama support is not enabled. Enable the quarkus-langchain4j-ollama dependency in pom.xml."
-            )
+            AiProvider.OLLAMA -> fetchOllama(apiKey)
             AiProvider.OPENAI_COMPATIBLE -> throw IllegalArgumentException(
                 "OPENAI_COMPATIBLE requires a base_url — use the provider-specific endpoint or pass base_url in model_params."
             )
@@ -116,7 +117,7 @@ class ModelListService @Inject constructor(
         requireKey(apiKey, AiProvider.ANTHROPIC)
         val request = HttpRequest.newBuilder()
             .uri(URI.create("$ANTHROPIC_URL/models"))
-            .header("x-api-key", apiKey!!)
+            .header("x-api-key", apiKey)
             .header("anthropic-version", "2023-06-01")
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .GET()
@@ -159,19 +160,44 @@ class ModelListService @Inject constructor(
         )
     }
 
+    /** GET {ollamaBaseUrl}/models — Ollama uses OpenAI-compatible API; no auth needed for local, optional for cloud. */
+    private fun fetchOllama(apiKey: String?): ModelListResponse {
+        val url = "${ollamaBaseUrl.trimEnd('/')}/models"
+        val builder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+            .GET()
+        if (!apiKey.isNullOrBlank()) {
+            builder.header("Authorization", "Bearer $apiKey")
+        }
+        val body = execute(builder.build(), AiProvider.OLLAMA)
+        val upstream = objectMapper.readValue(body, OpenAiModelsResponse::class.java)
+        return ModelListResponse(
+            provider = "ollama",
+            models = upstream.data.map { m ->
+                ModelInfo(id = m.id, name = m.id, created = m.created, ownedBy = m.ownedBy)
+            }.sortedBy { it.id },
+        )
+    }
+
     private fun execute(request: HttpRequest, provider: AiProvider): String {
         val response = HTTP.send(request, HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() !in 200..299) {
-            log.warnf("Model list failed for %s — HTTP %d: %s", provider, response.statusCode(), response.body().take(500))
+            val safeUrl = sanitizeUrl(request.uri().toString())
+            log.warnf("Model list failed for %s — HTTP %d url=%s", provider, response.statusCode(), safeUrl)
             throw RuntimeException("Upstream ${provider.name.lowercase()} returned HTTP ${response.statusCode()}")
         }
         return response.body()
     }
 
+    /** Strip query-param secrets (e.g. Gemini ?key=...) from URLs before logging. */
+    private fun sanitizeUrl(url: String): String =
+        url.replace(Regex("([?&])(key|api_key|apikey)=[^&]*"), "$1$2=***")
+
     private fun requireKey(apiKey: String?, provider: AiProvider) {
         if (apiKey.isNullOrBlank() || apiKey == "DISABLED") {
             throw IllegalArgumentException(
-                "No API key available for ${provider.name.lowercase()}. Supply api_key in the request or configure a server-wide key."
+                "No API key available for ${provider.name.lowercase()}. Supply X-Provider-Api-Key header or configure a server-wide key."
             )
         }
     }

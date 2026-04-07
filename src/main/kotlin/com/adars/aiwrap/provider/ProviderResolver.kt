@@ -34,6 +34,9 @@ class ProviderResolver @Inject constructor(
     private val azureOpenAiOcr: AzureOpenAiOcrService,
     private val azureOpenAiText: AzureOpenAiTextService,
 ) {
+    @org.eclipse.microprofile.config.inject.ConfigProperty(name = "aiwrap.ollama.base-url", defaultValue = "http://localhost:11434/v1")
+    lateinit var ollamaBaseUrl: String
+
     // ── Known base URLs for OpenAI-compatible free-tier providers ────────────
     private val GROQ_URL       = "https://api.groq.com/openai/v1"
     private val OPENROUTER_URL = "https://openrouter.ai/api/v1"
@@ -58,8 +61,11 @@ class ProviderResolver @Inject constructor(
         systemPrompt: String?,
         params: ModelParams?,
         apiKey: String? = null,
-    ): (prompt: String, imageBase64: String, mimeType: String) -> ProviderResult =
-        when (provider) {
+    ): (prompt: String, imageBase64: String, mimeType: String) -> ProviderResult {
+        if (provider == AiProvider.OPENAI_COMPATIBLE && params?.baseUrl.isNullOrBlank()) {
+            throw IllegalArgumentException("OPENAI_COMPATIBLE provider requires base_url in model_params.")
+        }
+        return when (provider) {
             AiProvider.OPENAI -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
             AiProvider.GEMINI -> { prompt, b64, mime -> geminiOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
             AiProvider.ANTHROPIC -> { prompt, b64, mime -> anthropicOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
@@ -68,9 +74,7 @@ class ProviderResolver @Inject constructor(
             AiProvider.OPENROUTER -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, withBaseUrl(params, OPENROUTER_URL), apiKey) }
             AiProvider.MISTRAL -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, withBaseUrl(params, MISTRAL_URL), apiKey) }
             AiProvider.OPENAI_COMPATIBLE -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, params, apiKey) }
-            AiProvider.OLLAMA -> throw UnsupportedOperationException(
-                "Ollama support is not enabled. Enable the quarkus-langchain4j-ollama dependency in pom.xml."
-            )
+            AiProvider.OLLAMA -> { prompt, b64, mime -> openAiOcr.invokeVision(prompt, b64, mime, systemPrompt, withBaseUrl(params, ollamaBaseUrl), apiKey ?: "ollama") }
             AiProvider.CEREBRAS -> throw UnsupportedOperationException(
                 "Cerebras does not support vision/image input. Use GROQ, OPENAI, GEMINI, or OPENROUTER."
             )
@@ -84,6 +88,7 @@ class ProviderResolver @Inject constructor(
                 "Cohere does not support vision/image input. Use OPENAI, GEMINI, or ANTHROPIC."
             )
         }
+    }
 
     /**
      * Returns a function (messages) -> ProviderResult for text-only providers.
@@ -94,8 +99,11 @@ class ProviderResolver @Inject constructor(
         provider: AiProvider,
         params: ModelParams?,
         apiKey: String? = null,
-    ): (messages: List<ChatMessage>) -> ProviderResult =
-        when (provider) {
+    ): (messages: List<ChatMessage>) -> ProviderResult {
+        if (provider == AiProvider.OPENAI_COMPATIBLE && params?.baseUrl.isNullOrBlank()) {
+            throw IllegalArgumentException("OPENAI_COMPATIBLE provider requires base_url in model_params.")
+        }
+        return when (provider) {
             AiProvider.OPENAI -> { msgs -> openAiText.chat(msgs, params, apiKey) }
             AiProvider.GEMINI -> { msgs -> geminiText.chat(msgs, params, apiKey) }
             AiProvider.DEEPSEEK -> { msgs -> deepSeekText.chat(msgs, params, apiKey) }
@@ -108,8 +116,7 @@ class ProviderResolver @Inject constructor(
             AiProvider.XAI -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, XAI_URL), apiKey) }
             AiProvider.COHERE -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, COHERE_URL), apiKey) }
             AiProvider.OPENAI_COMPATIBLE -> { msgs -> openAiText.chat(msgs, params, apiKey) }
-            AiProvider.OLLAMA -> throw UnsupportedOperationException(
-                "Ollama support is not enabled. Enable the quarkus-langchain4j-ollama dependency in pom.xml."
-            )
+            AiProvider.OLLAMA -> { msgs -> openAiText.chat(msgs, withBaseUrl(params, ollamaBaseUrl), apiKey ?: "ollama") }
         }
+    }
 }

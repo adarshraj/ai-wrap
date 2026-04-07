@@ -24,7 +24,7 @@ A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls 
 13. [Observability](#observability)
 14. [Prompt Templates](#prompt-templates)
 15. [Provider Configuration Guide](#provider-configuration-guide)
-16. [Enabling Ollama](#enabling-ollama)
+16. [Using Ollama](#using-ollama)
 17. [Connecting Your App](#connecting-your-app)
 18. [CI / CD](#ci--cd)
 19. [Project Structure](#project-structure)
@@ -36,9 +36,9 @@ A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls 
 ```
 Your App (any client)
         │  Authorization: Bearer <jwt>
-        │  GET  /ai/models          (list provider models)
-        │  POST /ai/invoke          (text)
-        │  POST /ai/invoke/vision   (image / PDF + text)
+        │  GET  /ai/providers        (list providers)
+        │  GET  /ai/providers/:provider/models  (list models)
+        │  POST /ai          (text + vision)
         ▼
   ai-wrap  (Kotlin + Quarkus 3.32, port 8090)
         │
@@ -69,7 +69,7 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 ## Features
 
 ### Core
-- **Four endpoints**: `GET /ai/meta` (discovery), `GET /ai/models` (model listing), `POST /ai/invoke` (text), `POST /ai/invoke/vision` (image/PDF)
+- **Four endpoints**: `GET /ai/templates` (prompt templates), `GET /ai/providers` (provider list), `GET /ai/providers/{provider}/models` (model listing), `POST /ai` (text + vision)
 - **Multi-turn chat**: pass a full `messages` array for conversation history
 - **Prompt templates**: server-side `.txt` files with `{placeholder}` substitution and an optional system-prompt section
 - **Per-request model overrides**: model, temperature, max_tokens, top_p, stop, frequency_penalty, presence_penalty, json_mode, timeout_seconds
@@ -147,8 +147,30 @@ cp .env.example .env
 | `OPENAI_API_KEY` | `gpt-4o-mini` |
 | `GEMINI_API_KEY` | `gemini-2.0-flash` |
 | `DEEPSEEK_API_KEY` | `deepseek-chat` |
+| `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| `AZURE_OPENAI_API_KEY` | `gpt-4o-mini` (deployment name) |
 
 If a key is not set it defaults to `DISABLED`. The server starts normally; requests to that provider fail at call time, not at startup.
+
+### Azure OpenAI (optional)
+
+| Variable | Description |
+|----------|-------------|
+| `AZURE_OPENAI_RESOURCE_NAME` | Azure resource name |
+| `AZURE_OPENAI_ENDPOINT` | Full endpoint URL (e.g. `https://myresource.openai.azure.com/`) |
+
+### Free-Tier Provider Keys (optional)
+
+These providers can also be configured per-request via the `api_key` field. Server-wide keys avoid passing them on every call.
+
+| Variable | Description |
+|----------|-------------|
+| `GROQ_API_KEY` | Groq API key |
+| `OPENROUTER_API_KEY` | OpenRouter API key |
+| `MISTRAL_API_KEY` | Mistral API key |
+| `CEREBRAS_API_KEY` | Cerebras API key |
+| `XAI_API_KEY` | xAI API key |
+| `COHERE_API_KEY` | Cohere API key |
 
 ### Model Overrides (optional)
 
@@ -158,6 +180,8 @@ If a key is not set it defaults to `DISABLED`. The server starts normally; reque
 | `GEMINI_MODEL` | Override default Gemini text model |
 | `GEMINI_VISION_MODEL` | Override default Gemini vision model |
 | `DEEPSEEK_MODEL` | Override default DeepSeek model |
+| `ANTHROPIC_MODEL` | Override default Anthropic model |
+| `AZURE_OPENAI_DEPLOYMENT` | Override default Azure OpenAI deployment name |
 
 ### Rate Limiting
 
@@ -181,13 +205,15 @@ If a key is not set it defaults to `DISABLED`. The server starts normally; reque
 | `AI_WRAP_ALLOWED_ORIGIN` | `http://localhost:5173` | CORS allowed origin |
 | `LOG_DIR` | `logs` | Directory for `audit.log` |
 
-### Ollama (disabled by default)
+### Ollama (local or cloud)
+
+Ollama is routed through the OpenAI-compatible API — no extra dependency needed. Works with both a local Ollama instance and Ollama Cloud.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_VISION_MODEL` | `llava` | Vision model name |
-| `OLLAMA_TEXT_MODEL` | `llama3.2` | Text model name |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama server URL (append `/v1` for OpenAI-compatible API). For Ollama Cloud, use your cloud endpoint. |
+| `OLLAMA_VISION_MODEL` | `llava` | Default vision model name |
+| `OLLAMA_TEXT_MODEL` | `llama3.2` | Default text model name |
 
 ---
 
@@ -224,13 +250,13 @@ http://localhost:8090/q/swagger-ui
 ### 5. Discover available templates and providers
 
 ```bash
-curl -H "Authorization: Bearer <jwt>" http://localhost:8090/ai/meta
+curl -H "Authorization: Bearer <jwt>" http://localhost:8090/ai/templates
 ```
 
 ### 6. Test a text request
 
 ```bash
-curl -s -X POST http://localhost:8090/ai/invoke \
+curl -s -X POST http://localhost:8090/ai \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -334,9 +360,9 @@ Interactive documentation is available at `/q/swagger-ui`.
 
 ---
 
-### `GET /ai/meta`
+### `GET /ai/templates`
 
-Discovery endpoint — returns all available templates and providers.
+Returns all available prompt templates and their variable placeholders.
 
 Response is cached for 5 minutes (`Cache-Control: public, max-age=300`).
 
@@ -354,30 +380,25 @@ Response is cached for 5 minutes (`Cache-Control: public, max-age=300`).
       "variables": [],
       "has_system_prompt": false
     }
-  ],
-  "providers": [
-    { "id": "openai",   "supports_text": true,  "supports_vision": true,  "default_model": "gpt-4o-mini",      "enabled": true  },
-    { "id": "gemini",   "supports_text": true,  "supports_vision": true,  "default_model": "gemini-2.0-flash", "enabled": true  },
-    { "id": "deepseek", "supports_text": true,  "supports_vision": false, "default_model": "deepseek-chat",    "enabled": false },
-    { "id": "ollama",   "supports_text": true,  "supports_vision": true,  "default_model": null,               "enabled": false }
   ]
 }
 ```
 
 ---
 
-### `GET /ai/models?provider=...&api_key=...`
+### `GET /ai/providers/{provider}/models`
 
 List models available from a specific provider. Proxies the upstream provider's model listing API and returns a unified response.
 
 Cached for 1 minute (`Cache-Control: public, max-age=60`).
 
-**Query parameters:**
+**Path parameter:** `{provider}` — Provider ID (e.g. `openai`, `openrouter`, `gemini`, `anthropic`, `groq`, `mistral`, `cerebras`, `xai`, `cohere`, `deepseek`, `ollama`)
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `provider` | Yes | Provider ID (e.g. `openai`, `openrouter`, `gemini`, `anthropic`, `groq`, `mistral`, `cerebras`, `xai`, `cohere`, `deepseek`) |
-| `api_key` | No | Per-request API key. If omitted, the server-configured key or environment variable is used. |
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Provider-Api-Key` | No | Per-request API key for the provider. Passed via header (not query param) to avoid leaking keys in access logs and browser history. If omitted, the server-configured key or environment variable is used. |
 
 **Response:**
 ```json
@@ -400,7 +421,7 @@ Cached for 1 minute (`Cache-Control: public, max-age=60`).
 | `anthropic` | `GET /v1/models` with `x-api-key` header |
 | `gemini` | `GET /v1beta/models?key=...` |
 | `azure_openai` | Not supported (model availability depends on deployment) |
-| `ollama` | Not supported (disabled) |
+| `ollama` | OpenAI-compatible `GET {OLLAMA_BASE_URL}/models` (no auth for local) |
 
 **Error responses:**
 
@@ -412,44 +433,46 @@ Cached for 1 minute (`Cache-Control: public, max-age=60`).
 
 ---
 
-### `POST /ai/invoke`
+### `POST /ai`
 
-Text-only AI request. Supply one of:
+Unified text + vision endpoint. Send `multipart/form-data`. If a `file` is attached, it's a vision request; otherwise it's text-only.
 
-- **`prompt`** — raw text sent directly to the LLM
-- **`template` + `variables`** — server-side template filled with your values
-- **`messages`** — full multi-turn conversation history (takes precedence over prompt/template)
+**Request fields:**
 
-**Request body:**
-```json
-{
-  "provider": "gemini",
-  "prompt": "Summarise this text: ...",
-  "template": "insights-qa",
-  "variables": { "question": "...", "context": "..." },
-  "system_prompt": "You are a concise tax advisor.",
-  "messages": [
-    { "role": "system",    "content": "You are a helpful assistant." },
-    { "role": "user",      "content": "What is compound interest?" },
-    { "role": "assistant", "content": "Compound interest is..." },
-    { "role": "user",      "content": "Give me an example with ₹10,000." }
-  ],
-  "model_params": {
-    "model": "gpt-4o",
-    "temperature": 0.3,
-    "max_tokens": 2000,
-    "top_p": 0.9,
-    "stop": ["###"],
-    "frequency_penalty": 0.2,
-    "presence_penalty": 0.1,
-    "json_mode": true,
-    "timeout_seconds": 60
-  },
-  "api_key": "sk-..."
-}
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `provider` | string | Yes | `openai`, `gemini`, `anthropic`, `ollama`, etc. |
+| `prompt` | string | No* | Raw prompt text |
+| `template` | string | No* | Template name (e.g. `insights-qa`) |
+| `variables` | JSON string | No | Template variable overrides, e.g. `{"question":"..."}` |
+| `system_prompt` | string | No | System persona override |
+| `messages` | JSON string | No | Multi-turn history (takes precedence over prompt/template) |
+| `model_params` | JSON string | Yes | Must include `model`. e.g. `{"model":"gpt-4o","temperature":0.3}` |
+| `api_key` | string | No | Per-request provider API key |
+| `file` | binary | No | Image (JPEG/PNG/WebP/BMP/HEIC) or PDF for vision requests, max 20 MB |
+
+\* Either `prompt`, `template`, or `messages` is required. Priority: `messages` > `prompt` > `template`.
+
+Call `GET /ai/providers/{provider}/models` first to discover available models.
+
+**Examples:**
+
+```bash
+# Text request
+curl -X POST http://localhost:8090/ai \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=openai \
+  -F prompt="Summarise my expenses" \
+  -F 'model_params={"model":"gpt-4o","temperature":0.3}'
+
+# Vision request (attach a file)
+curl -X POST http://localhost:8090/ai \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=gemini \
+  -F prompt="Extract text from this receipt" \
+  -F 'model_params={"model":"gemini-2.0-flash"}' \
+  -F file=@receipt.jpg
 ```
-
-All fields except `provider` are optional. Priority: `messages` > `prompt` > `template`.
 
 **Response:**
 ```json
@@ -477,34 +500,12 @@ All fields except `provider` are optional. Priority: `messages` > `prompt` > `te
 
 | Status | Cause |
 |--------|-------|
-| `400` | Unknown provider, missing prompt/template, injection detected, harmful content, prompt too long |
+| `400` | Unknown provider, missing prompt/template, missing model, injection detected, harmful content, prompt too long |
 | `401` | Missing or invalid JWT |
+| `413` | File too large |
 | `429` | Per-minute or per-day rate limit exceeded (`Retry-After` header included) |
 | `503` | Provider bulkhead full — too many concurrent requests |
 | `500` | Provider error |
-
----
-
-### `POST /ai/invoke/vision`
-
-Vision AI request (image or PDF + text prompt). Always single-turn.
-
-**Request:** `multipart/form-data`
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | binary | Yes | Image (JPEG/PNG/WebP/BMP/HEIC) or PDF, max 20 MB |
-| `provider` | string | Yes | `openai`, `gemini`, `anthropic`, etc. |
-| `prompt` | string | No* | Raw prompt text |
-| `template` | string | No* | Template name (e.g. `ocr-receipt-structured`) |
-| `variables` | JSON string | No | Template variable overrides |
-| `system_prompt` | string | No | System persona override |
-| `model_params` | JSON string | No | Same fields as text invoke |
-| `api_key` | string | No | Per-request provider API key |
-
-\* Either `prompt` or `template` is required.
-
-**Response:** same shape as `/ai/invoke`.
 
 ---
 
@@ -744,7 +745,7 @@ Question: {question}
 
 1. Create `src/main/resources/prompts/my-feature.txt`
 2. Restart the app (or hot-reload in dev mode)
-3. Call `/ai/invoke` with `"template": "my-feature"`
+3. Call `/ai` with `"template": "my-feature"`
 
 ---
 
@@ -765,7 +766,7 @@ Question: {question}
 | `cerebras` | No | Yes | Text-only; fastest inference |
 | `xai` | No | Yes | Grok models; text-only |
 | `cohere` | No | Yes | Command models; text-only |
-| `ollama` | Yes (llava) | Yes | Local, free; requires setup |
+| `ollama` | Yes (llava) | Yes | Local or cloud; free; uses OpenAI-compatible API |
 | `openai_compatible` | Yes | Yes | Any OpenAI-compatible endpoint; requires `base_url` in `model_params` |
 
 ### Per-request API key
@@ -774,10 +775,12 @@ Supply `api_key` in the request body to override the server-configured key for t
 
 Supported for **OpenAI** and **DeepSeek**. For **Gemini**, the server-configured key is always used (a warning is logged if `api_key` is supplied).
 
-### Per-request model override
+### Model selection (required)
+
+The client must specify `model_params.model` on every request. Call `GET /ai/providers/{provider}/models` first to discover available models.
 
 ```json
-{ "provider": "openai", "model_params": { "model": "gpt-4o" } }
+{ "provider": "openai", "model_params": { "model": "gpt-4o" }, "prompt": "Hello" }
 ```
 
 ### Global default model override
@@ -790,11 +793,11 @@ DEEPSEEK_MODEL=deepseek-reasoner
 
 ---
 
-## Enabling Ollama
+## Using Ollama
 
-Ollama support is disabled by default to avoid Quarkus Dev Services auto-downloading large model files.
+Ollama is supported out of the box via its OpenAI-compatible API — no extra dependency needed. Works with both local instances and Ollama Cloud.
 
-### 1. Start an Ollama server
+### Local Ollama
 
 ```bash
 ollama pull llava      # vision model (~4 GB)
@@ -802,43 +805,34 @@ ollama pull llama3.2   # text model (~2 GB)
 ollama serve           # starts on http://localhost:11434
 ```
 
-### 2. Uncomment the dependency in `pom.xml`
+The default `OLLAMA_BASE_URL` (`http://localhost:11434/v1`) points to a local instance. No further configuration needed.
 
-```xml
-<dependency>
-  <groupId>io.quarkiverse.langchain4j</groupId>
-  <artifactId>quarkus-langchain4j-ollama</artifactId>
-</dependency>
-```
+### Ollama Cloud
 
-### 3. Uncomment the Ollama properties in `application.properties`
-
-```properties
-quarkus.langchain4j.ollama.ollama-vision.base-url=${OLLAMA_BASE_URL:http://localhost:11434}
-quarkus.langchain4j.ollama.ollama-vision.chat-model.model-id=${OLLAMA_VISION_MODEL:llava}
-quarkus.langchain4j.ollama.ollama-text.base-url=${OLLAMA_BASE_URL:http://localhost:11434}
-quarkus.langchain4j.ollama.ollama-text.chat-model.model-id=${OLLAMA_TEXT_MODEL:llama3.2}
-```
-
-### 4. Add Ollama cases back to `ProviderResolver.kt`
-
-In `textFunction()`:
-```kotlin
-AiProvider.OLLAMA -> { msgs -> ollamaText.chat(msgs, params, apiKey) }
-```
-
-In `visionFunction()`:
-```kotlin
-AiProvider.OLLAMA -> { prompt, b64, mime -> ollamaOcr.invokeVision(prompt, b64, mime, systemPrompt, params) }
-```
-
-### 5. Rebuild
+Set `OLLAMA_BASE_URL` to your Ollama Cloud endpoint:
 
 ```bash
-./mvnw clean quarkus:dev
+OLLAMA_BASE_URL=https://your-endpoint.ollama.ai/v1
 ```
 
-> **Warning:** With the Ollama dependency on the classpath, Quarkus Dev Services will try to pull the model if `OLLAMA_BASE_URL` does not point to a running instance. Always have Ollama running before starting in dev mode.
+### Usage
+
+```bash
+# Text request using local Ollama
+curl -X POST http://localhost:8090/ai \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"ollama","prompt":"Hello!","model_params":{"model":"llama3.2"}}'
+
+# List available Ollama models
+curl "http://localhost:8090/ai/providers/ollama/models" \
+  -H "Authorization: Bearer $JWT"
+
+# With a per-request API key (e.g. for OpenRouter)
+curl "http://localhost:8090/ai/providers/openrouter/models" \
+  -H "Authorization: Bearer $JWT" \
+  -H "X-Provider-Api-Key: sk-or-..."
+```
 
 ---
 
@@ -866,7 +860,7 @@ networks:
 ### Minimal request example (JavaScript / fetch)
 
 ```js
-const res = await fetch(`${AI_WRAP_URL}/ai/invoke`, {
+const res = await fetch(`${AI_WRAP_URL}/ai`, {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${jwt}`,
@@ -949,10 +943,10 @@ ai-wrap/
     │                                 # TemplateInfo, ProviderInfo, ModelParams, ChatMessage,
     │                                 # ProviderResult (text + token usage from provider)
     ├── resource/
-    │   └── AiResource.kt             # GET /ai/meta
-    │                                 # GET /ai/models
-    │                                 # POST /ai/invoke
-    │                                 # POST /ai/invoke/vision
+    │   └── AiResource.kt             # GET  /ai/templates
+    │                                 # GET  /ai/providers
+    │                                 # GET  /ai/providers/{id}/models
+    │                                 # POST /ai (text + vision)
     ├── service/
     │   ├── AiService.kt              # Template loading, prompt resolution, provider dispatch
     │   ├── ModelListService.kt       # Proxies upstream provider model listing APIs
