@@ -40,6 +40,7 @@ data class ProviderInfo(
     val id: String,
     @JsonProperty("supports_text") val supportsText: Boolean,
     @JsonProperty("supports_vision") val supportsVision: Boolean,
+    @JsonProperty("supports_image_gen") val supportsImageGen: Boolean = false,
     /** Whether this provider is currently enabled (API key present and non-disabled). */
     val enabled: Boolean,
 )

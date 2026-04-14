@@ -1,10 +1,12 @@
 # AI Wrap
 
-A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls two HTTP endpoints — AI Wrap handles provider routing, prompt templating, security guards, rate limiting, reliability, and response normalisation. No AI SDK code lives in your client.
+A vendor-agnostic AI gateway. Any app that needs LLM, vision, or image-generation functionality calls a handful of HTTP endpoints — AI Wrap handles provider routing, prompt templating, security guards, rate limiting, reliability, and response normalisation. No AI SDK code lives in your client.
+
+**Modalities**: text (chat) · vision (image → text) · image generation (text → image)
 
 **Providers**: OpenAI · Google Gemini · DeepSeek · Anthropic · Azure OpenAI · Groq · OpenRouter · Mistral · Cerebras · xAI · Cohere · Ollama (optional, disabled by default)
 
-**Stack**: Kotlin 2.3 · Quarkus 3.32 · Java 25 · LangChain4j 1.7 · SmallRye JWT / Fault Tolerance / Health / OpenAPI · Micrometer + Prometheus
+**Stack**: Kotlin 2.3 · Quarkus 3.32 · Java 25 · LangChain4j 1.7 · SmallRye JWT / Fault Tolerance / Health / OpenAPI · Micrometer + Prometheus · OpenTelemetry (OTLP) · Redis (optional, for shared rate-limit state)
 
 ---
 
@@ -16,63 +18,73 @@ A vendor-agnostic AI gateway. Any app that needs LLM or OCR functionality calls 
 4. [Environment Variables](#environment-variables)
 5. [Local Development](#local-development)
 6. [Building the Application](#building-the-application)
-8. [Running with Docker Compose](#running-with-docker-compose)
+7. [Running with Docker Compose](#running-with-docker-compose)
+8. [Production Deployment (Multi-Client)](#production-deployment-multi-client)
 9. [API Reference](#api-reference)
-10. [Security](#security)
-11. [Rate Limiting](#rate-limiting)
-12. [Reliability](#reliability)
-13. [Observability](#observability)
-14. [Prompt Templates](#prompt-templates)
-15. [Provider Configuration Guide](#provider-configuration-guide)
-16. [Using Ollama](#using-ollama)
-17. [Connecting Your App](#connecting-your-app)
-18. [CI / CD](#ci--cd)
-19. [Project Structure](#project-structure)
+10. [Image Generation](#image-generation)
+11. [Security](#security)
+12. [Rate Limiting](#rate-limiting)
+13. [Reliability](#reliability)
+14. [Observability](#observability)
+15. [Prompt Templates](#prompt-templates)
+16. [Provider Configuration Guide](#provider-configuration-guide)
+17. [Using Ollama](#using-ollama)
+18. [Connecting Your App](#connecting-your-app)
+19. [CI / CD](#ci--cd)
+20. [Project Structure](#project-structure)
 
 ---
 
 ## Architecture
 
 ```
-Your App (any client)
+Your Apps (any clients — browser, Express, another service)
         │  Authorization: Bearer <jwt>
-        │  GET  /ai/providers        (list providers)
-        │  GET  /ai/providers/:provider/models  (list models)
-        │  POST /ai          (text + vision)
+        │  GET  /ai/templates               (list prompt templates)
+        │  GET  /ai/providers               (list providers + capabilities)
+        │  GET  /ai/providers/:id/models    (list models for a provider)
+        │  POST /ai                         (text + vision — multipart)
+        │  POST /ai/image                   (image generation — multipart)
         ▼
   ai-wrap  (Kotlin + Quarkus 3.32, port 8090)
         │
-        │  PromptGuard → ContentGuard → RateLimiter
+        │  PromptGuard → ContentGuard → RateLimiter (memory | redis)
         │
-        ├── LangChain4j ──► OpenAI   (gpt-4o-mini, vision + text)
-        │     @Bulkhead    ──► Gemini  (gemini-2.0-flash, vision + text)
-        │     @CircuitBreaker ──► DeepSeek (deepseek-chat, text only)
-        │     @Retry       ──► Ollama  (llava / llama3.2, optional)
+        ├── Text / Vision   ── LangChain4j ──► OpenAI / Gemini / Anthropic / Azure / …
+        │     @Bulkhead  @CircuitBreaker  @Retry
+        │
+        └── Image Gen       ── REST ──────────► Gemini 2.5 Flash Image
+              @Bulkhead  @CircuitBreaker  @Retry    (OpenAI gpt-image-1 wiring pending)
 ```
 
 For OCR, see [paddle-ocr-wrap](https://github.com/adarshraj/paddle-ocr-wrap) — a
 standalone HTTP service. Consumers that need OCR + LLM call both services directly.
 
-AI Wrap is **stateless** — no database. It:
+AI Wrap is **stateless by default** — no database. Optional Redis is used only for sharing
+rate-limit counters across replicas. It:
 
-- Routes requests to the right AI provider
-- Loads and fills prompt templates from classpath `.txt` files
+- Routes requests to the right AI provider across three modalities (text, vision, image gen)
+- Loads and fills prompt templates from classpath `.txt` files (works for any modality)
 - Runs **PromptGuard** (injection detection) and **ContentGuard** (harmful-intent detection)
-- Enforces per-user per-minute and per-day rate limits
+- Enforces per-user per-minute and per-day rate limits, with a pluggable storage backend
 - Applies fault tolerance on every provider call (bulkhead → circuit breaker → retry)
 - Returns a normalised response including token usage
+- Emits Prometheus metrics, structured logs, and OpenTelemetry traces
 
 Adding new AI functionality requires only a new `.txt` template file — no Kotlin changes.
+Adding a new image-gen provider requires one class implementing `ImageGenService`.
 
 ---
 
 ## Features
 
 ### Core
-- **Four endpoints**: `GET /ai/templates` (prompt templates), `GET /ai/providers` (provider list), `GET /ai/providers/{provider}/models` (model listing), `POST /ai` (text + vision)
+- **Five endpoints**: `GET /ai/templates`, `GET /ai/providers`, `GET /ai/providers/{provider}/models`, `POST /ai` (text + vision), `POST /ai/image` (image generation)
+- **Three modalities**: text, vision (image → text), image generation (text → image) — all behind one gateway, one auth scheme, one rate limiter
 - **Multi-turn chat**: pass a full `messages` array for conversation history
-- **Prompt templates**: server-side `.txt` files with `{placeholder}` substitution and an optional system-prompt section
+- **Prompt templates**: server-side `.txt` files with `{placeholder}` substitution and an optional system-prompt section — work for all modalities
 - **Per-request model overrides**: model, temperature, max_tokens, top_p, stop, frequency_penalty, presence_penalty, json_mode, timeout_seconds
+- **Image-gen params**: size, count, quality, style, response_format, seed, negative_prompt (provider-specific fields surface as `warnings` when ignored)
 - **Token usage**: `input_tokens` and `output_tokens` returned in every response
 
 ### Security
@@ -88,6 +100,7 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 ### Rate Limiting
 - **Per-user per-minute limit** (default 30 req/min)
 - **Per-user per-day limit** (default 1,000 req/day)
+- **Pluggable storage backend**: `memory` (default, single-process) or `redis` (multi-replica). Switch with one env var, no code change.
 - **Rate limit response headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining` on every invoke response
 - **429 headers**: `Retry-After` (60 s for minute limit; seconds until midnight for daily limit)
 - **503 on bulkhead rejection**: distinct from rate limiting
@@ -100,8 +113,10 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 - **Graceful shutdown**: 30 s drain window for in-flight requests on SIGTERM
 
 ### Observability
-- **Prometheus metrics** at `/q/metrics`: `ai.requests.total` (by provider/type/status) and `ai.request.duration`
+- **Prometheus metrics** at `/q/metrics`: `ai.requests.total` (by provider/type/status, where `type ∈ {text, vision, image}`) and `ai.request.duration`
 - **Structured audit log**: one JSON line per invocation written to `logs/audit.log` (rotating, max 10 MB × 5 backups)
+- **JSON console logs** (in `prod` profile): human-readable in dev/test, structured JSON in prod so Promtail/Loki can parse fields (`requestId`, `traceId`, `level`, `service.name`)
+- **OpenTelemetry tracing**: W3C traceparent propagation, OTLP exporter configurable via `OTEL_EXPORTER_OTLP_ENDPOINT` (Tempo / Jaeger / any OTLP collector)
 - **Request ID**: 8-hex-char ID generated per request, propagated through MDC and returned as `X-Request-Id` response header
 - **Health endpoints**: `/q/health`, `/q/health/live`, `/q/health/ready` (custom readiness check reports per-provider status)
 - **Swagger UI** at `/q/swagger-ui`
@@ -116,13 +131,16 @@ Adding new AI functionality requires only a new `.txt` template file — no Kotl
 
 ## Prerequisites
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Java (JDK) | 25 | Run / build the Quarkus app |
-| Docker | 24+ | Container runtime |
-| Docker Compose | v2 | Multi-service orchestration |
+| Tool | Version | Purpose | Required? |
+|------|---------|---------|-----------|
+| Java (JDK) | 25 | Run / build the Quarkus app | Yes |
+| Docker | 24+ | Container runtime | For containerised runs |
+| Docker Compose | v2 | Multi-service orchestration | For containerised runs |
+| Redis | 6+ | Shared rate-limit counters across replicas | Only when `AI_WRAP_RATELIMIT_BACKEND=redis` |
+| OTLP collector | — | Trace sink (Tempo / Jaeger / OTel Collector) | Optional — spans drop silently if absent |
+| auth-service or JWKS endpoint | — | JWT verification | Yes (or use a static public key — see Local Development §5) |
 
-> Maven is bundled via the Maven wrapper (`./mvnw`). Python is not needed if you run the sidecar via Docker.
+> Maven is bundled via the Maven wrapper (`./mvnw`). Python is not needed.
 
 ---
 
@@ -189,6 +207,25 @@ These providers can also be configured per-request via the `api_key` field. Serv
 |----------|---------|-------------|
 | `AI_WRAP_RATE_LIMIT_RPM` | `30` | Max requests per user per minute |
 | `AI_WRAP_RATE_LIMIT_RPD` | `1000` | Max requests per user per day |
+| `AI_WRAP_RATELIMIT_BACKEND` | `memory` (dev) / `redis` (prod profile) | Storage backend. `memory` = in-process counters (single replica only). `redis` = shared across replicas. |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection string — used only when backend is `redis` |
+| `AI_WRAP_REDIS_HEALTH` | `false` (dev) / `true` (prod profile) | Whether the Redis readiness probe contributes to `/q/health/ready`. Disable in dev so the service stays UP without a real Redis. |
+
+### Image Generation
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_IMAGE_ENDPOINT` | `https://generativelanguage.googleapis.com/v1beta` | Base URL for the Gemini REST image-gen endpoint |
+| `GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-image` | Default Gemini image-gen model ID |
+| `AI_WRAP_IMAGE_MAX_COUNT` | `4` | Cap on the number of images returned per request (requests above this are clamped and a warning is attached) |
+
+### Observability
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUARKUS_PROFILE` | `dev` | Set to `prod` to enable JSON console logging, OTLP tracing, and Redis-backed rate limiting by default |
+| `QUARKUS_OTEL_ENABLED` | `true` | Set `false` to fully disable OpenTelemetry (useful for local runs without a collector) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector:4317` (prod profile) | OTLP/gRPC endpoint for trace export |
 
 ### Request / Upload Limits
 
@@ -219,11 +256,13 @@ Ollama is routed through the OpenAI-compatible API — no extra dependency neede
 
 ## Local Development
 
+AI Wrap runs **fully standalone** — it has no database, and every external integration (Redis, OTLP collector, Infisical, auth-service) is optional. The only thing you must handle is the JWT that every endpoint requires.
+
 ### 1. Set environment variables
 
 ```bash
-export AUTH_SERVICE_URL=http://localhost:8703  # auth-service must be running
 export GEMINI_API_KEY=your-gemini-key          # or OPENAI_API_KEY / DEEPSEEK_API_KEY
+export AUTH_SERVICE_URL=http://localhost:8703  # auth-service must be running — or see alternatives below
 ```
 
 ### 2. Start in dev mode
@@ -232,7 +271,12 @@ export GEMINI_API_KEY=your-gemini-key          # or OPENAI_API_KEY / DEEPSEEK_AP
 ./mvnw quarkus:dev
 ```
 
-Quarkus starts on `http://localhost:8090` with live reload. Changes to `.kt`, `.properties`, or `.txt` template files trigger an automatic rebuild.
+Quarkus starts on `http://localhost:8090` with live reload. Changes to `.kt`, `.properties`, or `.txt` template files trigger an automatic rebuild. In dev mode:
+
+- Rate limiter uses the **in-memory** backend (no Redis required)
+- Redis readiness probe is **disabled** so `/q/health/ready` stays UP even with no Redis on the box
+- Console logs are **human-readable**, not JSON
+- OpenTelemetry defaults to `http://localhost:4317` — if nothing listens there, spans are silently dropped (harmless)
 
 ### 3. Verify startup
 
@@ -247,29 +291,51 @@ curl http://localhost:8090/q/health
 http://localhost:8090/q/swagger-ui
 ```
 
-### 5. Discover available templates and providers
+### 5. JWT options for standalone development
+
+Every endpoint requires `Authorization: Bearer <jwt>`. Three ways to satisfy this in local dev:
+
+**a. Run auth-service alongside it** — clone [auth-service](https://github.com/adarshraj/auth-service) on port 8703. Most faithful to prod. `POST http://localhost:8703/auth/login` returns a token.
+
+**b. Point at any JWKS endpoint you control** — set `AUTH_SERVICE_URL` to anything that serves a valid JWKS JSON at `/.well-known/jwks.json`.
+
+**c. Swap in a static public key** — generate an ES256 keypair, set:
+```bash
+export MP_JWT_VERIFY_PUBLICKEY="-----BEGIN PUBLIC KEY-----..."
+export MP_JWT_VERIFY_PUBLICKEY_LOCATION=  # empty — disables JWKS fetch
+```
+Sign your test tokens with the matching private key and pass them as `Authorization: Bearer <jwt>`.
+
+### 6. Discover available templates and providers
 
 ```bash
-curl -H "Authorization: Bearer <jwt>" http://localhost:8090/ai/templates
+curl -H "Authorization: Bearer $JWT" http://localhost:8090/ai/templates
+curl -H "Authorization: Bearer $JWT" http://localhost:8090/ai/providers
 ```
 
-### 6. Test a text request
+### 7. Test a text request
 
 ```bash
-curl -s -X POST http://localhost:8090/ai \
-  -H "Authorization: Bearer <jwt>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider": "gemini",
-    "template": "insights-qa",
-    "variables": {
-      "question": "What was my biggest expense?",
-      "context": "Food: ₹5000, Transport: ₹2000, Entertainment: ₹1000."
-    }
-  }'
+curl -X POST http://localhost:8090/ai \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=gemini \
+  -F prompt='Write a 2-line rhyme about a cat' \
+  -F 'model_params={"model":"gemini-2.0-flash"}'
 ```
 
-Obtain a JWT from auth-service: `POST http://localhost:8703/auth/login` with your credentials.
+### 8. Test an image request
+
+```bash
+curl -X POST http://localhost:8090/ai/image \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=gemini \
+  -F prompt='Flat cartoon illustration of a friendly orange cat wearing a space helmet, pastel background' \
+  -F 'image_params={"model":"gemini-2.5-flash-image","size":"1024x1024"}' \
+  -o response.json
+
+# Decode the first image from the JSON response
+jq -r '.images[0].base64' response.json | base64 -d > out.png
+```
 
 ---
 
@@ -352,6 +418,125 @@ docker compose logs -f ai-wrap
 
 ---
 
+## Production Deployment (Multi-Client)
+
+AI Wrap is designed so one deployed instance can back **many client apps** (web frontends, Express/Python/Go services, mobile backends, batch jobs). This section covers the production posture.
+
+### 1. Activate the prod profile
+
+Set `QUARKUS_PROFILE=prod` in the runtime environment. This turns on:
+
+- **JSON console logs** (for Loki / Promtail / any JSON-consuming aggregator)
+- **Redis-backed rate limiting** (`aiwrap.ratelimit.backend=redis` by default)
+- **Redis readiness probe** contributes to `/q/health/ready`
+- **OTLP trace export** targeted at `OTEL_EXPORTER_OTLP_ENDPOINT`
+- **`service.name=ai-wrap`** on every log and trace
+
+All other properties still honor env-var overrides, so you can flip any single default back (e.g. `AI_WRAP_RATELIMIT_BACKEND=memory` if you're running a single replica and don't want Redis).
+
+### 2. Minimum production env vars
+
+```bash
+QUARKUS_PROFILE=prod
+
+# JWT verification — points at your auth-service JWKS endpoint
+AUTH_SERVICE_URL=https://auth.example.com
+
+# CORS — comma-separated list of exact origins that host browser clients
+AI_WRAP_ALLOWED_ORIGIN=https://app1.example.com,https://app2.example.com
+
+# At least one provider key
+GEMINI_API_KEY=...
+OPENAI_API_KEY=...
+
+# Shared rate-limit store (prod profile defaults backend to redis)
+REDIS_URL=redis://redis:6379
+
+# OTLP collector (Tempo / Jaeger / OpenTelemetry Collector)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+```
+
+### 3. Running multiple replicas
+
+The in-memory rate limiter is **not safe** across multiple replicas — each pod would have its own counter and the effective per-user limit would multiply by the replica count. For any deployment with more than one replica:
+
+- Set `AI_WRAP_RATELIMIT_BACKEND=redis` (prod profile already does this)
+- Point all replicas at the same `REDIS_URL`
+- Redis counters use `INCR` + `EXPIRE`, so no cleanup job is required — keys expire naturally at the end of each bucket window
+
+Redis is the only shared state. Everything else (template cache, provider clients, metrics, audit log) is per-replica by design.
+
+### 4. Supporting multiple client apps
+
+Every client app talks to the **same** `ai-wrap` instance. Isolation happens through:
+
+- **Per-JWT rate limiting** — the gateway keys by JWT subject, so users of app A can't exhaust app B's quota
+- **Plan quotas live in each client app** — ai-wrap enforces a technical floor (abuse protection); business quotas (free vs. paid plans, per-feature caps) belong in the client because ai-wrap doesn't know your pricing
+- **Per-app API keys** — set `GROQ_API_KEY` / `OPENAI_API_KEY` server-side for shared use, or have each client pass its own key in the `api_key` request field so provider costs can be attributed per client
+- **Shared prompt templates, private ones too** — templates live on the classpath, so any client can reference any template. If apps need private prompts, namespace the template names (e.g. `app1-summarize.txt`, `app2-summarize.txt`).
+
+### 5. Service-to-service auth (for backend clients)
+
+Browser clients pass through the end-user's JWT. Backend services have two options:
+
+1. **Long-lived service token** issued by auth-service, stored in a secrets manager (Infisical, Vault, Doppler, AWS Secrets Manager). Rotate on a schedule. Simplest — start here.
+2. **Client-credentials flow** — the backend requests a fresh token from auth-service every N minutes. More rotation discipline, slightly more moving parts.
+
+Either way, the token travels in the standard `Authorization: Bearer <jwt>` header and is verified the same way as a browser-user token.
+
+### 6. Platform integration (Traefik, Loki, Tempo, CrowdSec)
+
+If you run the companion [platform](../platform) repo, ai-wrap drops in with Docker labels:
+
+```yaml
+services:
+  ai-wrap:
+    image: ai-wrap:latest
+    environment:
+      QUARKUS_PROFILE: prod
+      AUTH_SERVICE_URL: https://auth.example.com
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      REDIS_URL: redis://platform-redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    networks:
+      - platform_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.aiwrap.rule=Host(`ai-wrap.example.com`)"
+      - "traefik.http.routers.aiwrap.tls=true"
+      - "traefik.http.routers.aiwrap.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aiwrap.loadbalancer.server.port=8090"
+
+networks:
+  platform_proxy:
+    external: true
+```
+
+This wires up: TLS termination (Traefik), log shipping (Promtail → Loki), trace shipping (OTel collector → Tempo), metrics scraping (Prometheus → `/q/metrics`), and CrowdSec edge filtering — all without application changes.
+
+### 7. Scaling guidance
+
+| Dimension | Guidance |
+|-----------|----------|
+| **Replicas** | Stateless — scale horizontally behind any load balancer. Use `AI_WRAP_RATELIMIT_BACKEND=redis` from 2+ replicas. |
+| **CPU** | Light — the gateway is almost entirely IO-bound waiting on upstream providers. 0.25–0.5 vCPU per replica is usually enough. |
+| **Memory** | Template cache + LangChain4j clients ~200 MB baseline. `MaxRAMPercentage=75.0` already set in the JVM Dockerfile. |
+| **Upstream limits** | Provider rate limits (Gemini free tier = 15 RPM / 1500 RPD) are the real scale ceiling. Move to paid tiers before scaling ai-wrap replicas matters. |
+| **Bulkhead** | 10 concurrent calls × number of replicas. A 3-replica deployment handles 30 concurrent provider calls before the bulkhead starts queuing. |
+| **Graceful shutdown** | 30 s drain window on SIGTERM — size your rolling-deploy readiness delay accordingly. |
+
+### 8. Secrets handling
+
+Never bake API keys into the image or Docker Compose file. Inject at runtime from:
+
+- **Infisical** (recommended if using the platform repo)
+- **Vault** / **Doppler** / **AWS Secrets Manager** / **GCP Secret Manager**
+- **Docker secrets** / **Kubernetes secrets**
+
+Rotate provider keys by updating the secret store and restarting the pod — ai-wrap reads them once at startup.
+
+---
+
 ## API Reference
 
 All endpoints require `Authorization: Bearer <jwt>` (ES256, issued by [auth-service](https://github.com/adarshraj/auth-service)).
@@ -371,14 +556,9 @@ Response is cached for 5 minutes (`Cache-Control: public, max-age=300`).
 {
   "templates": [
     {
-      "name": "insights-qa",
+      "name": "my-template",
       "variables": ["context", "question"],
       "has_system_prompt": true
-    },
-    {
-      "name": "ocr-receipt-structured",
-      "variables": [],
-      "has_system_prompt": false
     }
   ]
 }
@@ -443,7 +623,7 @@ Unified text + vision endpoint. Send `multipart/form-data`. If a `file` is attac
 |-------|------|----------|-------------|
 | `provider` | string | Yes | `openai`, `gemini`, `anthropic`, `ollama`, etc. |
 | `prompt` | string | No* | Raw prompt text |
-| `template` | string | No* | Template name (e.g. `insights-qa`) |
+| `template` | string | No* | Template name from the classpath prompts directory |
 | `variables` | JSON string | No | Template variable overrides, e.g. `{"question":"..."}` |
 | `system_prompt` | string | No | System persona override |
 | `messages` | JSON string | No | Multi-turn history (takes precedence over prompt/template) |
@@ -509,6 +689,96 @@ curl -X POST http://localhost:8090/ai \
 
 ---
 
+### `POST /ai/image`
+
+Image generation endpoint. Send `multipart/form-data`. Today only `gemini` is wired (`gemini-2.5-flash-image`); `openai` (`gpt-image-1`) and `azure_openai` (DALL·E) slot in through the same `ImageGenService` interface.
+
+**Request fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `provider` | string | Yes | `gemini` (more coming) |
+| `prompt` | string | No* | Raw prompt text describing the image |
+| `template` | string | No* | Template name of a `prompts/*.txt` file on the classpath |
+| `variables` | JSON string | No | Template variable overrides |
+| `system_prompt` | string | No | Style / persona prefix prepended to the prompt |
+| `image_params` | JSON string | No | See [ImageParams fields](#imageparams-fields) |
+| `api_key` | string | No | Per-request provider API key (ignored by Gemini — server key is used) |
+| `reference` | binary | No | Optional reference image(s) for edit / variation flows. Repeatable field. Max 20 MB each. |
+
+\* Either `prompt` or `template` is required.
+
+**Example (raw prompt):**
+
+```bash
+curl -X POST http://localhost:8090/ai/image \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=gemini \
+  -F prompt='Flat cartoon illustration of a friendly orange cat wearing a space helmet, pastel background' \
+  -F 'image_params={"model":"gemini-2.5-flash-image","size":"1024x1024"}'
+```
+
+**Example (template):**
+
+```bash
+curl -X POST http://localhost:8090/ai/image \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=gemini \
+  -F template=my-image-template \
+  -F 'variables={"subject":"dinosaurs","style":"flat cartoon"}' \
+  -F 'image_params={"model":"gemini-2.5-flash-image"}'
+```
+
+Templates are resolved from the classpath `prompts/` directory. ai-wrap is app-agnostic and ships with **no bundled templates** — clients send raw prompts via the `prompt` field by default. Deployers who want server-side prompt management can drop their own `.txt` files into `src/main/resources/prompts/` at build time.
+
+**Response:**
+
+```json
+{
+  "provider": "gemini",
+  "model": "gemini-2.5-flash-image",
+  "processing_time_ms": 4120,
+  "input_tokens": 42,
+  "output_tokens": 1290,
+  "images": [
+    {
+      "base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+      "mime_type": "image/png",
+      "size_bytes": 284719,
+      "finish_reason": "STOP"
+    }
+  ],
+  "warnings": []
+}
+```
+
+- `images[]` is always an array, even when `count=1`.
+- Exactly one of `base64` / `url` is populated per image (Gemini always returns `base64`).
+- `warnings[]` surfaces non-fatal issues such as `"style ignored by gemini"` or `"count clamped to 4"`.
+- The base64 payload is **never** written to the audit log — only `image_count` and `image_bytes_out`.
+
+**Error responses:** same envelope as `POST /ai`. An extra case:
+
+| Status | Cause |
+|--------|-------|
+| `400` | Provider does not support image generation (e.g. `deepseek`, `anthropic`) |
+
+### `ImageParams` fields
+
+| Field | Type | Providers | Description |
+|-------|------|-----------|-------------|
+| `model` | string | All | Provider-specific model ID (e.g. `gemini-2.5-flash-image`, `gpt-image-1`) |
+| `size` | string | All | `WxH` format, e.g. `"1024x1024"` |
+| `count` | integer | All | Number of images. Clamped to `AI_WRAP_IMAGE_MAX_COUNT` (default 4). |
+| `quality` | string | OpenAI-family | `standard` / `hd` (ignored by Gemini, surfaced as warning) |
+| `style` | string | OpenAI-family | `vivid` / `natural` (ignored by Gemini) |
+| `response_format` | string | OpenAI-family | `b64` (default) / `url`. Gemini always returns `b64`. |
+| `seed` | integer | Provider-dependent | Reproducibility seed |
+| `negative_prompt` | string | Provider-dependent | Ignored by Gemini; surfaced as warning |
+| `timeout_seconds` | integer | Gemini | Per-request timeout override |
+
+---
+
 ### `ModelParams` fields
 
 | Field | Type | Providers | Description |
@@ -545,6 +815,70 @@ Readiness reports DOWN only if **no** provider is enabled. Individual provider s
 |------|-------------|
 | `GET /q/metrics` | Prometheus metrics |
 | `GET /q/swagger-ui` | Interactive API documentation |
+
+---
+
+## Image Generation
+
+Image generation is exposed at `POST /ai/image` and sits behind the same middleware stack as text/vision (PromptGuard, ContentGuard, RateLimiter, Bulkhead, CircuitBreaker, Retry, AuditService, metrics).
+
+### Architecture
+
+```
+POST /ai/image ──► AiResource.image()
+                      │
+                      ▼
+                   AiService.generateImage()
+                      │     (PromptGuard + ContentGuard + template substitution)
+                      ▼
+                   ImageServiceResolver
+                      │
+                      ├── GEMINI    → GeminiImageGenService    (REST: generateContent, responseModalities=[TEXT,IMAGE])
+                      ├── OPENAI    → (pending: gpt-image-1)
+                      └── AZURE     → (pending: DALL·E)
+```
+
+Each provider implements the `ImageGenService` interface:
+
+```kotlin
+interface ImageGenService {
+    fun generate(
+        prompt: String,
+        systemPrompt: String? = null,
+        params: ImageParams? = null,
+        referenceImages: List<ReferenceImage> = emptyList(),
+        apiKey: String? = null,
+    ): ImageProviderResult
+}
+```
+
+The `AiProvider` enum has a `supportsImageGen` flag — `ImageServiceResolver` consults this before dispatching, so providers that don't support image generation fail fast with a helpful error.
+
+### Adding a new image-gen provider
+
+1. Create `provider/<name>/<Name>ImageGenService.kt` implementing `ImageGenService`
+2. Annotate with `@ApplicationScoped` and apply `@Bulkhead`, `@CircuitBreaker`, `@Retry` on the `generate` function
+3. Inject the new service into `ImageServiceResolver` and add its case to the `when` block
+4. Flip `supportsImageGen = true` on the relevant `AiProvider` enum entry
+5. Add the provider's config keys under `aiwrap.image.<provider>.*` in `application.properties`
+
+No changes to `AiService`, `AiResource`, guards, audit, or metrics are required — the response shape is already normalised and all cross-cutting concerns sit above the provider layer.
+
+### Image-gen templates (optional)
+
+Prompt templates work the same for image generation as for text — a `.txt` file in `src/main/resources/prompts/` with `{placeholder}` substitution. ai-wrap is **app-agnostic** and does not ship with domain-specific image templates. Clients can either:
+
+1. **Send raw prompts** via the `prompt` field — simplest, and the right default for most integrations. Each calling app owns its own prompt engineering.
+2. **Add their own templates** — drop a `.txt` file into `prompts/` at build time for prompts that need guard-rails or placeholder substitution on the server.
+
+Example of a custom template a caller might add:
+
+```
+Flat cartoon illustration of {subject}, {style}.
+Centered composition, no text, no letters, no words.
+```
+
+Save as `prompts/my-image.txt` and call with `template=my-image`, `variables={"subject":"...","style":"..."}`.
 
 ---
 
@@ -613,6 +947,21 @@ Rate limiting is applied per authenticated user (JWT subject) before the request
 | Per minute | 30 requests | `AI_WRAP_RATE_LIMIT_RPM` |
 | Per day | 1,000 requests | `AI_WRAP_RATE_LIMIT_RPD` |
 
+### Pluggable storage backend
+
+The rate limiter stores counters through the `RateLimiterBackend` interface. Two implementations ship:
+
+| Backend | When to use | How to select |
+|---------|-------------|---------------|
+| `memory` (default in dev) | Single-process deployments, local dev, tests | `AI_WRAP_RATELIMIT_BACKEND=memory` |
+| `redis` (default in prod profile) | Any deployment with **2+ replicas** — counters are shared so effective limits match config | `AI_WRAP_RATELIMIT_BACKEND=redis` + `REDIS_URL=redis://host:6379` |
+
+The Redis backend uses `INCR` + conditional `EXPIRE` — keys expire naturally at the end of each window, so no cleanup job is required. In `memory` mode the Redis client is **never instantiated**; no connection is opened even though the dependency is on the classpath.
+
+**Switching backends is a one-line env-var change — no rebuild, no code change.**
+
+Adding a new backend (e.g. DynamoDB, Postgres) is a single class implementing `incrementWithTtl(key, ttlSeconds)` and a `@LookupIfProperty` annotation matching a new value of `aiwrap.ratelimit.backend`.
+
 ### Response Headers (on invoke endpoints)
 
 | Header | Description |
@@ -626,6 +975,12 @@ Rate limiting is applied per authenticated user (JWT subject) before the request
 Returns `429 Too Many Requests` with a JSON error body and `Retry-After` header:
 - **Minute limit**: `Retry-After: 60`
 - **Daily limit**: `Retry-After: <seconds until midnight>`
+
+### What rate limiting does NOT cover
+
+- **Plan quotas** (free vs. paid tiers) — these belong in each client app, not in ai-wrap. The gateway enforces an abuse floor; the client enforces pricing.
+- **Per-provider upstream limits** — the Gemini free tier has its own 15 RPM / 1500 RPD cap that ai-wrap does not currently enforce. If you hit it, you'll get 429s from Gemini surfaced as 500s. Run on paid tiers or add a per-provider limiter layer when this becomes a problem.
+- **Edge / IP-level abuse** — put Cloudflare, a Traefik middleware, or CrowdSec in front for pre-auth filtering.
 
 ---
 
@@ -673,8 +1028,18 @@ Available at `GET /q/metrics`. Key metrics:
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `ai_requests_total` | `provider`, `type` (text/vision), `status` (success/failure) | Total invocation count |
+| `ai_requests_total` | `provider`, `type` (text / vision / image), `status` (success / failure) | Total invocation count |
 | `ai_request_duration_seconds` | `provider`, `type` | Invocation latency histogram |
+
+Scrape config for Prometheus:
+
+```yaml
+scrape_configs:
+  - job_name: ai-wrap
+    metrics_path: /q/metrics
+    static_configs:
+      - targets: ['ai-wrap:8090']
+```
 
 ### Audit Log
 
@@ -685,7 +1050,7 @@ Every AI invocation writes a structured JSON line to `logs/audit.log`:
   "userId": "alice",
   "action": "text",
   "provider": "openai",
-  "template": "insights-qa",
+  "template": "my-template",
   "model": "gpt-4o-mini",
   "processingTimeMs": 912,
   "success": true,
@@ -697,6 +1062,11 @@ Every AI invocation writes a structured JSON line to `logs/audit.log`:
 
 The log rotates at 10 MB with 5 backups. Prompt content is intentionally excluded.
 
+### Console Logs
+
+- **Dev / test**: human-readable format with request ID, trace ID, and span ID in brackets
+- **Prod profile** (`QUARKUS_PROFILE=prod`): structured JSON one-line-per-log so Promtail / Fluent Bit / Vector can parse fields natively. Every line carries `service.name=ai-wrap`, plus standard OTel `traceId` / `spanId` from MDC.
+
 ### Request Tracing
 
 Each request gets an 8-hex-char `requestId` generated at entry:
@@ -704,9 +1074,22 @@ Each request gets an 8-hex-char `requestId` generated at entry:
 - Returned to the caller as `X-Request-Id` response header
 - Exposed as a CORS header so browser clients can read it
 
+### Distributed Tracing (OpenTelemetry)
+
+ai-wrap ships with `quarkus-opentelemetry`. It:
+
+- Honors W3C `traceparent` headers from upstream callers, so traces from your client apps continue through ai-wrap
+- Exports spans via OTLP/gRPC to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4317` in the prod profile)
+- Works with Tempo, Jaeger, Honeycomb, any OTLP-compatible backend
+- Set `QUARKUS_OTEL_ENABLED=false` to disable entirely for local runs
+
+Every AI invocation becomes a trace with spans covering template resolution, PromptGuard, ContentGuard, the provider call, and the response parse — invaluable when debugging "why did this take 40 seconds".
+
 ### Health Check
 
 `GET /q/health/ready` runs a custom `ProviderHealthCheck` that reports the enabled/disabled status of each provider. The service reports `UP` if at least one provider is enabled.
+
+When `AI_WRAP_REDIS_HEALTH=true` (default in prod profile), the Redis readiness probe also contributes — the service reports `DOWN` if Redis is unreachable. In dev the probe is disabled so `/q/health/ready` stays UP without a real Redis.
 
 ---
 
@@ -734,14 +1117,15 @@ Question: {question}
 
 ### Bundled templates
 
-| Template name | Variables | Description |
-|---------------|-----------|-------------|
-| `insights-qa` | `context`, `question` | Answer a natural-language question about spending data |
-| `ocr-receipt-structured` | _(none)_ | Extract structured JSON from a receipt/invoice image |
-| `import-transaction` | varies | Parse and classify bank transaction data |
-| `import-investment` | varies | Parse and classify investment transaction data |
+**None.** ai-wrap is app-agnostic and does not ship with any domain-specific prompt templates. Every caller is free to:
 
-### Adding a template
+- Send raw prompts via the `prompt` field (the default, and what most clients should do)
+- Manage their own prompts in their own codebase or database
+- Drop private `.txt` files into `src/main/resources/prompts/` at build time if they want the server to handle placeholder substitution, guard-rails, or system-prompt sections
+
+The template machinery is still fully supported — it's just unopinionated about content.
+
+### Adding a template (optional)
 
 1. Create `src/main/resources/prompts/my-feature.txt`
 2. Restart the app (or hot-reload in dev mode)
@@ -868,8 +1252,8 @@ const res = await fetch(`${AI_WRAP_URL}/ai`, {
   },
   body: JSON.stringify({
     provider: 'gemini',
-    template: 'insights-qa',
-    variables: { question, context },
+    prompt: `Answer the following question based on this context.\n\nContext: ${context}\n\nQuestion: ${question}`,
+    model_params: { model: 'gemini-2.0-flash' },
   }),
 });
 const { result, input_tokens, output_tokens } = await res.json();
@@ -939,41 +1323,46 @@ ai-wrap/
     │   └── ProviderHealthCheck.kt     # @Readiness — reports per-provider enabled status
     │
     ├── model/
-    │   └── AiModels.kt               # AiInvokeRequest, AiInvokeResponse, AiMetaResponse,
-    │                                 # TemplateInfo, ProviderInfo, ModelParams, ChatMessage,
-    │                                 # ProviderResult (text + token usage from provider)
+    │   ├── AiModels.kt               # AiInvokeResponse, TemplateInfo, ProviderInfo,
+    │   │                             # ModelParams, ChatMessage, ProviderResult
+    │   └── ImageModels.kt            # ImageParams, GeneratedImage, ImageProviderResult,
+    │                                 # AiImageResponse
     ├── resource/
     │   └── AiResource.kt             # GET  /ai/templates
     │                                 # GET  /ai/providers
     │                                 # GET  /ai/providers/{id}/models
-    │                                 # POST /ai (text + vision)
+    │                                 # POST /ai       (text + vision)
+    │                                 # POST /ai/image (image generation)
     ├── service/
-    │   ├── AiService.kt              # Template loading, prompt resolution, provider dispatch
+    │   ├── AiService.kt              # Template loading, prompt resolution, dispatch
+    │   │                             # (invoke / invokeVision / generateImage)
     │   ├── ModelListService.kt       # Proxies upstream provider model listing APIs
     │   ├── AuditService.kt           # Structured JSON audit log (logs/audit.log)
-    │   ├── RateLimiter.kt            # Per-user sliding-minute + daily quota
+    │   ├── RateLimiter.kt            # Per-user sliding-minute + daily quota (delegates to backend)
+    │   ├── ratelimit/
+    │   │   ├── RateLimiterBackend.kt              # Backend interface
+    │   │   ├── InMemoryRateLimiterBackend.kt      # Default; @LookupIfProperty(memory)
+    │   │   └── RedisRateLimiterBackend.kt         # @LookupIfProperty(redis) — INCR + EXPIRE
     │   ├── PromptGuard.kt            # Injection detection on user-supplied values
     │   └── ContentGuard.kt           # Harmful-intent detection on assembled prompts
     │
     └── provider/
-        ├── AiProvider.kt             # Enum of supported providers
-        ├── ProviderResolver.kt       # Routes to correct service bean
-        ├── openai/
-        │   ├── OpenAiTextService.kt  # @Bulkhead @CircuitBreaker @Retry; dynamic build for api_key
-        │   └── OpenAiOcrService.kt  # Same; vision via gpt-4o-mini
+        ├── AiProvider.kt             # Enum of supported providers (supportsImageGen flag)
+        ├── ProviderResolver.kt       # Routes text/vision to correct service bean
+        ├── image/
+        │   ├── ImageGenService.kt    # Contract for image-gen providers
+        │   └── ImageServiceResolver.kt  # Routes POST /ai/image to the right bean
+        ├── openai/                   # OpenAiTextService, OpenAiOcrService
         ├── gemini/
-        │   ├── GeminiTextService.kt  # @Bulkhead @CircuitBreaker @Retry
-        │   └── GeminiOcrService.kt
-        ├── deepseek/
-        │   └── DeepSeekTextService.kt  # OpenAI-compatible; dynamic build for api_key
-        ├── anthropic/                  # AnthropicTextService, AnthropicOcrService
-        └── azure/                      # AzureOpenAiTextService, AzureOpenAiOcrService
+        │   ├── GeminiTextService.kt
+        │   ├── GeminiOcrService.kt
+        │   └── GeminiImageGenService.kt  # REST generateContent, responseModalities=[TEXT,IMAGE]
+        ├── deepseek/                 # DeepSeekTextService (OpenAI-compatible)
+        ├── anthropic/                # AnthropicTextService, AnthropicOcrService
+        └── azure/                    # AzureOpenAiTextService, AzureOpenAiOcrService
 
 src/main/resources/
-    ├── application.properties
+    ├── application.properties        # Base config + %prod profile overrides
     └── prompts/
-        ├── insights-qa.txt              # Q&A over spending data
-        ├── ocr-receipt-structured.txt   # Receipt/invoice → structured JSON
-        ├── import-transaction.txt       # Bank transaction parsing
-        └── import-investment.txt        # Investment transaction parsing
+        └── (empty — no bundled templates; callers supply their own prompts)
 ```

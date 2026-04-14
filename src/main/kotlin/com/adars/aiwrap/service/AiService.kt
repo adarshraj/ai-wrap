@@ -1,13 +1,17 @@
 package com.adars.aiwrap.service
 
+import com.adars.aiwrap.model.AiImageResponse
 import com.adars.aiwrap.model.AiInvokeResponse
 import com.adars.aiwrap.model.AiTemplatesResponse
+import com.adars.aiwrap.model.ImageParams
 import com.adars.aiwrap.model.ModelParams
 import com.adars.aiwrap.model.ProviderInfo
 import com.adars.aiwrap.model.TemplateInfo
 import com.adars.aiwrap.model.ChatMessage as ChatMessageDto
 import com.adars.aiwrap.provider.AiProvider
 import com.adars.aiwrap.provider.ProviderResolver
+import com.adars.aiwrap.provider.image.ImageServiceResolver
+import com.adars.aiwrap.provider.image.ReferenceImage
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.ChatMessage
 import dev.langchain4j.data.message.SystemMessage
@@ -47,6 +51,7 @@ private data class ResolvedPrompt(val system: String?, val user: String)
 @ApplicationScoped
 class AiService @Inject constructor(
     private val resolver: ProviderResolver,
+    private val imageResolver: ImageServiceResolver,
     @ConfigProperty(name = "quarkus.langchain4j.openai.openai-text.api-key", defaultValue = "DISABLED")
     private val openAiApiKey: String,
     @ConfigProperty(name = "quarkus.langchain4j.ai.gemini.gemini-text.api-key", defaultValue = "DISABLED")
@@ -169,6 +174,60 @@ class AiService @Inject constructor(
         )
     }
 
+    // ── Image generation ──────────────────────────────────────────────────────
+
+    fun generateImage(
+        rawPrompt: String?,
+        templateName: String?,
+        variables: Map<String, String>,
+        systemPromptOverride: String?,
+        referenceImages: List<ReferenceImage>,
+        provider: AiProvider,
+        params: ImageParams?,
+        apiKey: String?,
+    ): AiImageResponse {
+        if (!provider.supportsImageGen) throw BadRequestException(
+            "Provider '${provider.name.lowercase()}' does not support image generation. " +
+                "Currently supported: gemini."
+        )
+        if (params?.model.isNullOrBlank()) {
+            // Gemini image gen has a sensible default so this is a soft warning, not a hard error —
+            // the service falls back to aiwrap.image.gemini.default-model.
+            log.debugf("image_params.model not supplied — provider default will be used")
+        }
+
+        val resolved = resolvePrompt(rawPrompt, systemPromptOverride, templateName, variables)
+        val service = imageResolver.resolve(provider)
+
+        val start = System.currentTimeMillis()
+        val result = try {
+            service.generate(resolved.user, resolved.system, params, referenceImages, apiKey)
+        } catch (e: Exception) {
+            val elapsed = System.currentTimeMillis() - start
+            registry.counter("ai.requests.total", "provider", provider.name.lowercase(), "type", "image", "status", "failure").increment()
+            registry.timer("ai.request.duration", "provider", provider.name.lowercase(), "type", "image").record(elapsed, java.util.concurrent.TimeUnit.MILLISECONDS)
+            throw e
+        }
+        val elapsed = System.currentTimeMillis() - start
+
+        registry.counter("ai.requests.total", "provider", provider.name.lowercase(), "type", "image", "status", "success").increment()
+        registry.timer("ai.request.duration", "provider", provider.name.lowercase(), "type", "image").record(elapsed, java.util.concurrent.TimeUnit.MILLISECONDS)
+
+        log.infof("generateImage source=%s provider=%s model=%s images=%d elapsed=%dms",
+            if (rawPrompt != null) "raw" else "template:$templateName",
+            provider, params?.model ?: "default", result.images.size, elapsed)
+
+        return AiImageResponse(
+            provider = provider.name.lowercase(),
+            model = params?.model,
+            processingTimeMs = elapsed,
+            inputTokens = result.inputTokens,
+            outputTokens = result.outputTokens,
+            images = result.images,
+            warnings = result.warnings,
+        )
+    }
+
     // ── Meta / discovery ─────────────────────────────────────────────────────
 
     fun templates(): AiTemplatesResponse {
@@ -178,8 +237,8 @@ class AiService @Inject constructor(
     // ── Providers ─────────────────────────────────────────────────────────────
 
     fun providers(): List<ProviderInfo> = listOf(
-        ProviderInfo(id = "openai", supportsText = true, supportsVision = true, enabled = openAiApiKey != "DISABLED"),
-        ProviderInfo(id = "gemini", supportsText = true, supportsVision = true, enabled = geminiApiKey != "DISABLED"),
+        ProviderInfo(id = "openai", supportsText = true, supportsVision = true, supportsImageGen = false, enabled = openAiApiKey != "DISABLED"),
+        ProviderInfo(id = "gemini", supportsText = true, supportsVision = true, supportsImageGen = true, enabled = geminiApiKey != "DISABLED"),
         ProviderInfo(id = "deepseek", supportsText = true, supportsVision = false, enabled = deepSeekApiKey != "DISABLED"),
         ProviderInfo(id = "anthropic", supportsText = true, supportsVision = true, enabled = anthropicApiKey != "DISABLED"),
         ProviderInfo(id = "azure_openai", supportsText = true, supportsVision = true, enabled = azureOpenAiApiKey != "DISABLED"),

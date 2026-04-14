@@ -1,10 +1,18 @@
-# ── Build output layout (produced by: mvn package) ───────────────────────────
-# target/quarkus-app/
-#   quarkus-run.jar   — thin launcher
-#   app/              — application JARs
-#   lib/              — runtime dependencies
-#   quarkus/          — Quarkus framework JARs
+# ── Stage 1: Build ────────────────────────────────────────────────────────────
+FROM eclipse-temurin:25-jdk AS build
 
+WORKDIR /build
+
+# Cache Maven dependencies — these layers only rebuild when pom.xml changes
+COPY pom.xml mvnw ./
+COPY .mvn .mvn
+RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
+
+# Copy source and build
+COPY src src
+RUN ./mvnw package -B -DskipTests
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM eclipse-temurin:25-jre
 
 LABEL org.opencontainers.image.title="ai-wrap" \
@@ -22,11 +30,11 @@ WORKDIR /app
 #   ExitOnOutOfMemoryError — crash fast instead of degrading
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 
-# Copy Quarkus fast-jar layout
-COPY --chown=appuser:appgroup target/quarkus-app/lib/ lib/
-COPY --chown=appuser:appgroup target/quarkus-app/*.jar ./
-COPY --chown=appuser:appgroup target/quarkus-app/app/ app/
-COPY --chown=appuser:appgroup target/quarkus-app/quarkus/ quarkus/
+# Copy Quarkus fast-jar layout from build stage
+COPY --from=build --chown=appuser:appgroup /build/target/quarkus-app/lib/ lib/
+COPY --from=build --chown=appuser:appgroup /build/target/quarkus-app/*.jar ./
+COPY --from=build --chown=appuser:appgroup /build/target/quarkus-app/app/ app/
+COPY --from=build --chown=appuser:appgroup /build/target/quarkus-app/quarkus/ quarkus/
 
 # Create log directory for audit logs
 RUN mkdir -p logs && chown appuser:appgroup logs

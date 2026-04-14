@@ -2,10 +2,13 @@ package com.adars.aiwrap.resource
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.adars.aiwrap.model.AiImageResponse
 import com.adars.aiwrap.model.AiInvokeResponse
 import com.adars.aiwrap.model.AiTemplatesResponse
+import com.adars.aiwrap.model.ImageParams
 import com.adars.aiwrap.model.ModelParams
 import com.adars.aiwrap.provider.AiProvider
+import com.adars.aiwrap.provider.image.ReferenceImage
 import com.adars.aiwrap.service.AiService
 import com.adars.aiwrap.service.AuditService
 import com.adars.aiwrap.service.ModelListService
@@ -122,7 +125,7 @@ class AiResource @Inject constructor(
      * Multipart form fields:
      *   provider      — required: "openai" | "gemini" | "anthropic" | "ollama" | ...
      *   prompt        — raw prompt text (use this OR template)
-     *   template      — template name, e.g. "insights-qa"
+     *   template      — template name from the classpath prompts directory (optional)
      *   variables     — JSON string, e.g. '{"question":"...", "context":"..."}'  (optional)
      *   system_prompt — optional system prompt string
      *   messages      — JSON string, multi-turn history (optional)
@@ -220,5 +223,108 @@ class AiResource @Inject constructor(
         }
     }
 
+    /**
+     * POST /ai/image — image generation.
+     *
+     * Multipart form fields:
+     *   provider      — required: "gemini" (more providers coming)
+     *   prompt        — raw prompt text (use this OR template)
+     *   template      — template name from the classpath prompts directory (optional)
+     *   variables     — JSON string of template variables (optional)
+     *   system_prompt — optional style/persona prefix
+     *   image_params  — JSON string, e.g. '{"model":"gemini-2.5-flash-image","size":"1024x1024"}'
+     *   api_key       — optional per-request provider API key
+     *   reference     — optional image uploads for edit/variation flows (repeatable)
+     */
+    @Operation(summary = "AI — image generation")
+    @APIResponses(
+        APIResponse(responseCode = "200", description = "Generated images",
+            content = [Content(schema = Schema(implementation = AiImageResponse::class))]),
+        APIResponse(responseCode = "400", description = "Bad request — unknown provider, invalid template, blocked content, or unsupported capability"),
+        APIResponse(responseCode = "401", description = "Unauthorized — missing or invalid JWT"),
+        APIResponse(responseCode = "413", description = "Reference file too large"),
+        APIResponse(responseCode = "429", description = "Rate limit exceeded"),
+        APIResponse(responseCode = "500", description = "Provider error"),
+    )
+    @POST
+    @Path("/image")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @RolesAllowed("**")
+    fun image(
+        @RestForm("provider") providerStr: String,
+        @RestForm("prompt") prompt: String?,
+        @RestForm("template") template: String?,
+        @RestForm("variables") variablesJson: String?,
+        @RestForm("system_prompt") systemPrompt: String?,
+        @RestForm("image_params") imageParamsJson: String?,
+        @RestForm("api_key") apiKey: String?,
+        @RestForm("reference") references: List<FileUpload>?,
+    ): Response {
+        val userId = securityIdentity.principal?.name ?: "unknown"
+        log.debugf("image — user=%s provider=%s template=%s refs=%d",
+            userId, providerStr, template, references?.size ?: 0)
+
+        return try {
+            val remaining = rateLimiter.check(userId)
+            val provider = AiProvider.fromString(providerStr)
+            val variables: Map<String, String> = if (!variablesJson.isNullOrBlank())
+                objectMapper.readValue(variablesJson) else emptyMap()
+            val imageParams: ImageParams? = if (!imageParamsJson.isNullOrBlank())
+                objectMapper.readValue(imageParamsJson) else null
+
+            val refImages = (references ?: emptyList())
+                .filter { it.size() > 0 }
+                .map { file ->
+                    if (file.size() > maxUploadBytes) {
+                        throw TooLargeException(
+                            "Reference file too large: ${file.size() / 1_048_576}MB exceeds ${maxUploadBytes / 1_048_576}MB limit. " +
+                                "Raise AI_WRAP_MAX_UPLOAD_BYTES to allow larger files."
+                        )
+                    }
+                    ReferenceImage(
+                        bytes = file.uploadedFile().toFile().readBytes(),
+                        mimeType = file.contentType() ?: "image/png",
+                    )
+                }
+
+            val result = aiService.generateImage(
+                prompt, template, variables, systemPrompt,
+                refImages, provider, imageParams, apiKey,
+            )
+
+            auditService.record(userId, "image", result.provider, template, result.model, result.processingTimeMs, true,
+                inputTokens = result.inputTokens, outputTokens = result.outputTokens)
+
+            Response.ok(result)
+                .header("X-RateLimit-Limit", rateLimiter.requestsPerMinute)
+                .header("X-RateLimit-Remaining", remaining)
+                .build()
+        } catch (e: TooLargeException) {
+            Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE).entity(errorBody(e.message)).build()
+        } catch (e: BadRequestException) {
+            Response.status(Response.Status.BAD_REQUEST).entity(errorBody(e.message)).build()
+        } catch (e: IllegalArgumentException) {
+            Response.status(Response.Status.BAD_REQUEST).entity(errorBody(e.message)).build()
+        } catch (e: UnsupportedOperationException) {
+            Response.status(Response.Status.BAD_REQUEST).entity(errorBody(e.message)).build()
+        } catch (e: RateLimitExceededException) {
+            Response.status(429)
+                .entity(errorBody(e.message))
+                .header("X-RateLimit-Limit", e.limit)
+                .header("X-RateLimit-Remaining", 0)
+                .header("Retry-After", e.retryAfterSeconds)
+                .build()
+        } catch (e: BulkheadException) {
+            Response.status(503).entity(errorBody("Server is busy — too many concurrent image requests. Try again shortly.")).build()
+        } catch (e: Exception) {
+            log.errorf(e, "image failed — user=%s template=%s", userId, template)
+            auditService.record(userId, "image", providerStr, template, null, 0, false, e.javaClass.simpleName,
+                inputTokens = null, outputTokens = null)
+            Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(errorBody(e.message)).build()
+        }
+    }
+
     private fun errorBody(message: String?) = mapOf("error" to (message ?: "Unknown error"))
+
+    private class TooLargeException(message: String) : RuntimeException(message)
 }
