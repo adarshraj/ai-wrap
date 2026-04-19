@@ -1,14 +1,14 @@
 services:
 
-  # ── AI Wrap (Quarkus) ────────────────────────────────────────────────────────
-  ai-wrap:
+  # ── AI Shim (Quarkus) ────────────────────────────────────────────────────────
+  ai-shim:
     build:
       context: .
       dockerfile: src/main/docker/Dockerfile.jvm
-    image: ai-wrap:latest
+    image: ai-shim:latest
     restart: unless-stopped
     ports:
-      - "${AI_WRAP_PORT:-8090}:8090"
+      - "${AI_SHIM_PORT:-8090}:8090"
     environment:
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://localhost:8703}
       # AI provider keys — set only the ones you use; unset keys default to DISABLED
@@ -36,16 +36,16 @@ services:
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-llava}
       OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-llama3.2}
       # CORS — set to the origin of your calling app
-      AI_WRAP_ALLOWED_ORIGIN: ${AI_WRAP_ALLOWED_ORIGIN:-http://localhost:5173}
+      AI_SHIM_ALLOWED_ORIGIN: ${AI_SHIM_ALLOWED_ORIGIN:-http://localhost:5173}
       # Limits
-      AI_WRAP_MAX_UPLOAD_BYTES: ${AI_WRAP_MAX_UPLOAD_BYTES:-20971520}
-      AI_WRAP_MAX_BODY_SIZE: ${AI_WRAP_MAX_BODY_SIZE:-50M}
-      AI_WRAP_MAX_PROMPT_CHARS: ${AI_WRAP_MAX_PROMPT_CHARS:-200000}
+      AI_SHIM_MAX_UPLOAD_BYTES: ${AI_SHIM_MAX_UPLOAD_BYTES:-20971520}
+      AI_SHIM_MAX_BODY_SIZE: ${AI_SHIM_MAX_BODY_SIZE:-50M}
+      AI_SHIM_MAX_PROMPT_CHARS: ${AI_SHIM_MAX_PROMPT_CHARS:-200000}
       # Rate limiting
-      AI_WRAP_RATE_LIMIT_RPM: ${AI_WRAP_RATE_LIMIT_RPM:-30}
-      AI_WRAP_RATE_LIMIT_RPD: ${AI_WRAP_RATE_LIMIT_RPD:-1000}
+      AI_SHIM_RATE_LIMIT_RPM: ${AI_SHIM_RATE_LIMIT_RPM:-30}
+      AI_SHIM_RATE_LIMIT_RPD: ${AI_SHIM_RATE_LIMIT_RPD:-1000}
     networks:
-      - ai-wrap-network
+      - ai-shim-network
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/q/health/ready"]
       interval: 10s
@@ -54,8 +54,8 @@ services:
       start_period: 30s
 
 networks:
-  # Shared external network — calling apps join this to reach ai-wrap
-  # Create it once with: docker network create ai-wrap-network
-  ai-wrap-network:
+  # Shared external network — calling apps join this to reach ai-shim
+  # Create it once with: docker network create ai-shim-network
+  ai-shim-network:
     external: true
-    name: ai-wrap-network
+    name: ai-shim-network

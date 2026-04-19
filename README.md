@@ -1,6 +1,6 @@
-# AI Wrap
+# AI Shim
 
-A vendor-agnostic AI gateway. Any app that needs LLM, vision, or image-generation functionality calls a handful of HTTP endpoints — AI Wrap handles provider routing, prompt templating, security guards, rate limiting, reliability, and response normalisation. No AI SDK code lives in your client.
+A vendor-agnostic AI gateway. Any app that needs LLM, vision, or image-generation functionality calls a handful of HTTP endpoints — AI Shim handles provider routing, prompt templating, security guards, rate limiting, reliability, and response normalisation. No AI SDK code lives in your client.
 
 **Modalities**: text (chat) · vision (image → text) · image generation (text → image)
 
@@ -46,7 +46,7 @@ Your Apps (any clients — browser, Express, another service)
         │  POST /ai                         (text + vision — multipart)
         │  POST /ai/image                   (image generation — multipart)
         ▼
-  ai-wrap  (Kotlin + Quarkus 3.32, port 8090)
+  ai-shim  (Kotlin + Quarkus 3.32, port 8090)
         │
         │  PromptGuard → ContentGuard → RateLimiter (memory | redis)
         │
@@ -60,7 +60,7 @@ Your Apps (any clients — browser, Express, another service)
 For OCR, see [paddle-ocr-wrap](https://github.com/adarshraj/paddle-ocr-wrap) — a
 standalone HTTP service. Consumers that need OCR + LLM call both services directly.
 
-AI Wrap is **stateless by default** — no database. Optional Redis is used only for sharing
+AI Shim is **stateless by default** — no database. Optional Redis is used only for sharing
 rate-limit counters across replicas. It:
 
 - Routes requests to the right AI provider across three modalities (text, vision, image gen)
@@ -136,7 +136,7 @@ Adding a new image-gen provider requires one class implementing `ImageGenService
 | Java (JDK) | 25 | Run / build the Quarkus app | Yes |
 | Docker | 24+ | Container runtime | For containerised runs |
 | Docker Compose | v2 | Multi-service orchestration | For containerised runs |
-| Redis | 6+ | Shared rate-limit counters across replicas | Only when `AI_WRAP_RATELIMIT_BACKEND=redis` |
+| Redis | 6+ | Shared rate-limit counters across replicas | Only when `AI_SHIM_RATELIMIT_BACKEND=redis` |
 | OTLP collector | — | Trace sink (Tempo / Jaeger / OTel Collector) | Optional — spans drop silently if absent |
 | auth-service or JWKS endpoint | — | JWT verification | Yes (or use a static public key — see Local Development §5) |
 
@@ -205,11 +205,11 @@ These providers can also be configured per-request via the `api_key` field. Serv
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI_WRAP_RATE_LIMIT_RPM` | `30` | Max requests per user per minute |
-| `AI_WRAP_RATE_LIMIT_RPD` | `1000` | Max requests per user per day |
-| `AI_WRAP_RATELIMIT_BACKEND` | `memory` (dev) / `redis` (prod profile) | Storage backend. `memory` = in-process counters (single replica only). `redis` = shared across replicas. |
+| `AI_SHIM_RATE_LIMIT_RPM` | `30` | Max requests per user per minute |
+| `AI_SHIM_RATE_LIMIT_RPD` | `1000` | Max requests per user per day |
+| `AI_SHIM_RATELIMIT_BACKEND` | `memory` (dev) / `redis` (prod profile) | Storage backend. `memory` = in-process counters (single replica only). `redis` = shared across replicas. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string — used only when backend is `redis` |
-| `AI_WRAP_REDIS_HEALTH` | `false` (dev) / `true` (prod profile) | Whether the Redis readiness probe contributes to `/q/health/ready`. Disable in dev so the service stays UP without a real Redis. |
+| `AI_SHIM_REDIS_HEALTH` | `false` (dev) / `true` (prod profile) | Whether the Redis readiness probe contributes to `/q/health/ready`. Disable in dev so the service stays UP without a real Redis. |
 
 ### Image Generation
 
@@ -217,7 +217,7 @@ These providers can also be configured per-request via the `api_key` field. Serv
 |----------|---------|-------------|
 | `GEMINI_IMAGE_ENDPOINT` | `https://generativelanguage.googleapis.com/v1beta` | Base URL for the Gemini REST image-gen endpoint |
 | `GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-image` | Default Gemini image-gen model ID |
-| `AI_WRAP_IMAGE_MAX_COUNT` | `4` | Cap on the number of images returned per request (requests above this are clamped and a warning is attached) |
+| `AI_SHIM_IMAGE_MAX_COUNT` | `4` | Cap on the number of images returned per request (requests above this are clamped and a warning is attached) |
 
 ### Observability
 
@@ -231,15 +231,15 @@ These providers can also be configured per-request via the `api_key` field. Serv
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI_WRAP_MAX_BODY_SIZE` | `50M` | Max HTTP request body (raise for large PDF imports) |
-| `AI_WRAP_MAX_UPLOAD_BYTES` | `20971520` | Max file upload size in bytes (20 MB) |
-| `AI_WRAP_MAX_PROMPT_CHARS` | `200000` | Max characters in a raw prompt or combined template variables |
+| `AI_SHIM_MAX_BODY_SIZE` | `50M` | Max HTTP request body (raise for large PDF imports) |
+| `AI_SHIM_MAX_UPLOAD_BYTES` | `20971520` | Max file upload size in bytes (20 MB) |
+| `AI_SHIM_MAX_PROMPT_CHARS` | `200000` | Max characters in a raw prompt or combined template variables |
 
 ### Server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI_WRAP_ALLOWED_ORIGIN` | `http://localhost:5173` | CORS allowed origin |
+| `AI_SHIM_ALLOWED_ORIGIN` | `http://localhost:5173` | CORS allowed origin |
 | `LOG_DIR` | `logs` | Directory for `audit.log` |
 
 ### Ollama (local or cloud)
@@ -256,7 +256,7 @@ Ollama is routed through the OpenAI-compatible API — no extra dependency neede
 
 ## Local Development
 
-AI Wrap runs **fully standalone** — it has no database, and every external integration (Redis, OTLP collector, Infisical, auth-service) is optional. The only thing you must handle is the JWT that every endpoint requires.
+AI Shim runs **fully standalone** — it has no database, and every external integration (Redis, OTLP collector, Infisical, auth-service) is optional. The only thing you must handle is the JWT that every endpoint requires.
 
 ### 1. Set environment variables
 
@@ -367,7 +367,7 @@ java -jar target/quarkus-app/quarkus-run.jar
 
 ```bash
 ./mvnw package -DskipTests
-docker build -f src/main/docker/Dockerfile.jvm -t ai-wrap:latest .
+docker build -f src/main/docker/Dockerfile.jvm -t ai-shim:latest .
 ```
 
 The image uses Eclipse Temurin 25 JRE, runs as a non-root user, and includes a `HEALTHCHECK` via `/q/health/live`.
@@ -379,7 +379,7 @@ The image uses Eclipse Temurin 25 JRE, runs as a non-root user, and includes a `
 ### 1. Create the shared external network
 
 ```bash
-docker network create ai-wrap-network
+docker network create ai-shim-network
 ```
 
 ### 2. Configure environment
@@ -404,35 +404,35 @@ curl http://localhost:8090/q/health
 ### 5. View logs
 
 ```bash
-docker compose logs -f ai-wrap
+docker compose logs -f ai-shim
 ```
 
 ### Docker Compose services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| `ai-wrap` | `8090` (host) | Quarkus application |
+| `ai-shim` | `8090` (host) | Quarkus application |
 
 **Networks:**
-- `ai-wrap-network` — external network your calling apps join to reach AI Wrap
+- `ai-shim-network` — external network your calling apps join to reach AI Shim
 
 ---
 
 ## Production Deployment (Multi-Client)
 
-AI Wrap is designed so one deployed instance can back **many client apps** (web frontends, Express/Python/Go services, mobile backends, batch jobs). This section covers the production posture.
+AI Shim is designed so one deployed instance can back **many client apps** (web frontends, Express/Python/Go services, mobile backends, batch jobs). This section covers the production posture.
 
 ### 1. Activate the prod profile
 
 Set `QUARKUS_PROFILE=prod` in the runtime environment. This turns on:
 
 - **JSON console logs** (for Loki / Promtail / any JSON-consuming aggregator)
-- **Redis-backed rate limiting** (`aiwrap.ratelimit.backend=redis` by default)
+- **Redis-backed rate limiting** (`aishim.ratelimit.backend=redis` by default)
 - **Redis readiness probe** contributes to `/q/health/ready`
 - **OTLP trace export** targeted at `OTEL_EXPORTER_OTLP_ENDPOINT`
-- **`service.name=ai-wrap`** on every log and trace
+- **`service.name=ai-shim`** on every log and trace
 
-All other properties still honor env-var overrides, so you can flip any single default back (e.g. `AI_WRAP_RATELIMIT_BACKEND=memory` if you're running a single replica and don't want Redis).
+All other properties still honor env-var overrides, so you can flip any single default back (e.g. `AI_SHIM_RATELIMIT_BACKEND=memory` if you're running a single replica and don't want Redis).
 
 ### 2. Minimum production env vars
 
@@ -443,7 +443,7 @@ QUARKUS_PROFILE=prod
 AUTH_SERVICE_URL=https://auth.example.com
 
 # CORS — comma-separated list of exact origins that host browser clients
-AI_WRAP_ALLOWED_ORIGIN=https://app1.example.com,https://app2.example.com
+AI_SHIM_ALLOWED_ORIGIN=https://app1.example.com,https://app2.example.com
 
 # At least one provider key
 GEMINI_API_KEY=...
@@ -460,7 +460,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 
 The in-memory rate limiter is **not safe** across multiple replicas — each pod would have its own counter and the effective per-user limit would multiply by the replica count. For any deployment with more than one replica:
 
-- Set `AI_WRAP_RATELIMIT_BACKEND=redis` (prod profile already does this)
+- Set `AI_SHIM_RATELIMIT_BACKEND=redis` (prod profile already does this)
 - Point all replicas at the same `REDIS_URL`
 - Redis counters use `INCR` + `EXPIRE`, so no cleanup job is required — keys expire naturally at the end of each bucket window
 
@@ -468,10 +468,10 @@ Redis is the only shared state. Everything else (template cache, provider client
 
 ### 4. Supporting multiple client apps
 
-Every client app talks to the **same** `ai-wrap` instance. Isolation happens through:
+Every client app talks to the **same** `ai-shim` instance. Isolation happens through:
 
 - **Per-JWT rate limiting** — the gateway keys by JWT subject, so users of app A can't exhaust app B's quota
-- **Plan quotas live in each client app** — ai-wrap enforces a technical floor (abuse protection); business quotas (free vs. paid plans, per-feature caps) belong in the client because ai-wrap doesn't know your pricing
+- **Plan quotas live in each client app** — ai-shim enforces a technical floor (abuse protection); business quotas (free vs. paid plans, per-feature caps) belong in the client because ai-shim doesn't know your pricing
 - **Per-app API keys** — set `GROQ_API_KEY` / `OPENAI_API_KEY` server-side for shared use, or have each client pass its own key in the `api_key` request field so provider costs can be attributed per client
 - **Shared prompt templates, private ones too** — templates live on the classpath, so any client can reference any template. If apps need private prompts, namespace the template names (e.g. `app1-summarize.txt`, `app2-summarize.txt`).
 
@@ -486,12 +486,12 @@ Either way, the token travels in the standard `Authorization: Bearer <jwt>` head
 
 ### 6. Platform integration (Traefik, Loki, Tempo, CrowdSec)
 
-If you run the companion [platform](../platform) repo, ai-wrap drops in with Docker labels:
+If you run the companion [platform](../platform) repo, ai-shim drops in with Docker labels:
 
 ```yaml
 services:
-  ai-wrap:
-    image: ai-wrap:latest
+  ai-shim:
+    image: ai-shim:latest
     environment:
       QUARKUS_PROFILE: prod
       AUTH_SERVICE_URL: https://auth.example.com
@@ -502,10 +502,10 @@ services:
       - platform_proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.aiwrap.rule=Host(`ai-wrap.example.com`)"
-      - "traefik.http.routers.aiwrap.tls=true"
-      - "traefik.http.routers.aiwrap.tls.certresolver=letsencrypt"
-      - "traefik.http.services.aiwrap.loadbalancer.server.port=8090"
+      - "traefik.http.routers.aishim.rule=Host(`ai-shim.example.com`)"
+      - "traefik.http.routers.aishim.tls=true"
+      - "traefik.http.routers.aishim.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aishim.loadbalancer.server.port=8090"
 
 networks:
   platform_proxy:
@@ -518,10 +518,10 @@ This wires up: TLS termination (Traefik), log shipping (Promtail → Loki), trac
 
 | Dimension | Guidance |
 |-----------|----------|
-| **Replicas** | Stateless — scale horizontally behind any load balancer. Use `AI_WRAP_RATELIMIT_BACKEND=redis` from 2+ replicas. |
+| **Replicas** | Stateless — scale horizontally behind any load balancer. Use `AI_SHIM_RATELIMIT_BACKEND=redis` from 2+ replicas. |
 | **CPU** | Light — the gateway is almost entirely IO-bound waiting on upstream providers. 0.25–0.5 vCPU per replica is usually enough. |
 | **Memory** | Template cache + LangChain4j clients ~200 MB baseline. `MaxRAMPercentage=75.0` already set in the JVM Dockerfile. |
-| **Upstream limits** | Provider rate limits (Gemini free tier = 15 RPM / 1500 RPD) are the real scale ceiling. Move to paid tiers before scaling ai-wrap replicas matters. |
+| **Upstream limits** | Provider rate limits (Gemini free tier = 15 RPM / 1500 RPD) are the real scale ceiling. Move to paid tiers before scaling ai-shim replicas matters. |
 | **Bulkhead** | 10 concurrent calls × number of replicas. A 3-replica deployment handles 30 concurrent provider calls before the bulkhead starts queuing. |
 | **Graceful shutdown** | 30 s drain window on SIGTERM — size your rolling-deploy readiness delay accordingly. |
 
@@ -533,7 +533,7 @@ Never bake API keys into the image or Docker Compose file. Inject at runtime fro
 - **Vault** / **Doppler** / **AWS Secrets Manager** / **GCP Secret Manager**
 - **Docker secrets** / **Kubernetes secrets**
 
-Rotate provider keys by updating the secret store and restarting the pod — ai-wrap reads them once at startup.
+Rotate provider keys by updating the secret store and restarting the pod — ai-shim reads them once at startup.
 
 ---
 
@@ -729,7 +729,7 @@ curl -X POST http://localhost:8090/ai/image \
   -F 'image_params={"model":"gemini-2.5-flash-image"}'
 ```
 
-Templates are resolved from the classpath `prompts/` directory. ai-wrap is app-agnostic and ships with **no bundled templates** — clients send raw prompts via the `prompt` field by default. Deployers who want server-side prompt management can drop their own `.txt` files into `src/main/resources/prompts/` at build time.
+Templates are resolved from the classpath `prompts/` directory. ai-shim is app-agnostic and ships with **no bundled templates** — clients send raw prompts via the `prompt` field by default. Deployers who want server-side prompt management can drop their own `.txt` files into `src/main/resources/prompts/` at build time.
 
 **Response:**
 
@@ -769,7 +769,7 @@ Templates are resolved from the classpath `prompts/` directory. ai-wrap is app-a
 |-------|------|-----------|-------------|
 | `model` | string | All | Provider-specific model ID (e.g. `gemini-2.5-flash-image`, `gpt-image-1`) |
 | `size` | string | All | `WxH` format, e.g. `"1024x1024"` |
-| `count` | integer | All | Number of images. Clamped to `AI_WRAP_IMAGE_MAX_COUNT` (default 4). |
+| `count` | integer | All | Number of images. Clamped to `AI_SHIM_IMAGE_MAX_COUNT` (default 4). |
 | `quality` | string | OpenAI-family | `standard` / `hd` (ignored by Gemini, surfaced as warning) |
 | `style` | string | OpenAI-family | `vivid` / `natural` (ignored by Gemini) |
 | `response_format` | string | OpenAI-family | `b64` (default) / `url`. Gemini always returns `b64`. |
@@ -860,13 +860,13 @@ The `AiProvider` enum has a `supportsImageGen` flag — `ImageServiceResolver` c
 2. Annotate with `@ApplicationScoped` and apply `@Bulkhead`, `@CircuitBreaker`, `@Retry` on the `generate` function
 3. Inject the new service into `ImageServiceResolver` and add its case to the `when` block
 4. Flip `supportsImageGen = true` on the relevant `AiProvider` enum entry
-5. Add the provider's config keys under `aiwrap.image.<provider>.*` in `application.properties`
+5. Add the provider's config keys under `aishim.image.<provider>.*` in `application.properties`
 
 No changes to `AiService`, `AiResource`, guards, audit, or metrics are required — the response shape is already normalised and all cross-cutting concerns sit above the provider layer.
 
 ### Image-gen templates (optional)
 
-Prompt templates work the same for image generation as for text — a `.txt` file in `src/main/resources/prompts/` with `{placeholder}` substitution. ai-wrap is **app-agnostic** and does not ship with domain-specific image templates. Clients can either:
+Prompt templates work the same for image generation as for text — a `.txt` file in `src/main/resources/prompts/` with `{placeholder}` substitution. ai-shim is **app-agnostic** and does not ship with domain-specific image templates. Clients can either:
 
 1. **Send raw prompts** via the `prompt` field — simplest, and the right default for most integrations. Each calling app owns its own prompt engineering.
 2. **Add their own templates** — drop a `.txt` file into `prompts/` at build time for prompts that need guard-rails or placeholder substitution on the server.
@@ -886,7 +886,7 @@ Save as `prompts/my-image.txt` and call with `template=my-image`, `variables={"s
 
 ### Authentication
 
-All endpoints require a valid JWT in the `Authorization: Bearer <token>` header. Tokens must be ES256-signed by [auth-service](https://github.com/adarshraj/auth-service). AI Wrap fetches the public key automatically from `AUTH_SERVICE_URL/.well-known/jwks.json` and validates the signature and issuer claim. No shared secret is needed.
+All endpoints require a valid JWT in the `Authorization: Bearer <token>` header. Tokens must be ES256-signed by [auth-service](https://github.com/adarshraj/auth-service). AI Shim fetches the public key automatically from `AUTH_SERVICE_URL/.well-known/jwks.json` and validates the signature and issuer claim. No shared secret is needed.
 
 ### PromptGuard
 
@@ -932,7 +932,7 @@ Applied to every HTTP response:
 
 ### Prompt Length Limit
 
-Raw prompts and combined template variable values are capped at `AI_WRAP_MAX_PROMPT_CHARS` (default 200,000 characters, ≈ 50,000 tokens). Requests exceeding this limit receive `400 Bad Request`.
+Raw prompts and combined template variable values are capped at `AI_SHIM_MAX_PROMPT_CHARS` (default 200,000 characters, ≈ 50,000 tokens). Requests exceeding this limit receive `400 Bad Request`.
 
 ---
 
@@ -944,8 +944,8 @@ Rate limiting is applied per authenticated user (JWT subject) before the request
 
 | Limit | Default | Override |
 |-------|---------|----------|
-| Per minute | 30 requests | `AI_WRAP_RATE_LIMIT_RPM` |
-| Per day | 1,000 requests | `AI_WRAP_RATE_LIMIT_RPD` |
+| Per minute | 30 requests | `AI_SHIM_RATE_LIMIT_RPM` |
+| Per day | 1,000 requests | `AI_SHIM_RATE_LIMIT_RPD` |
 
 ### Pluggable storage backend
 
@@ -953,14 +953,14 @@ The rate limiter stores counters through the `RateLimiterBackend` interface. Two
 
 | Backend | When to use | How to select |
 |---------|-------------|---------------|
-| `memory` (default in dev) | Single-process deployments, local dev, tests | `AI_WRAP_RATELIMIT_BACKEND=memory` |
-| `redis` (default in prod profile) | Any deployment with **2+ replicas** — counters are shared so effective limits match config | `AI_WRAP_RATELIMIT_BACKEND=redis` + `REDIS_URL=redis://host:6379` |
+| `memory` (default in dev) | Single-process deployments, local dev, tests | `AI_SHIM_RATELIMIT_BACKEND=memory` |
+| `redis` (default in prod profile) | Any deployment with **2+ replicas** — counters are shared so effective limits match config | `AI_SHIM_RATELIMIT_BACKEND=redis` + `REDIS_URL=redis://host:6379` |
 
 The Redis backend uses `INCR` + conditional `EXPIRE` — keys expire naturally at the end of each window, so no cleanup job is required. In `memory` mode the Redis client is **never instantiated**; no connection is opened even though the dependency is on the classpath.
 
 **Switching backends is a one-line env-var change — no rebuild, no code change.**
 
-Adding a new backend (e.g. DynamoDB, Postgres) is a single class implementing `incrementWithTtl(key, ttlSeconds)` and a `@LookupIfProperty` annotation matching a new value of `aiwrap.ratelimit.backend`.
+Adding a new backend (e.g. DynamoDB, Postgres) is a single class implementing `incrementWithTtl(key, ttlSeconds)` and a `@LookupIfProperty` annotation matching a new value of `aishim.ratelimit.backend`.
 
 ### Response Headers (on invoke endpoints)
 
@@ -978,8 +978,8 @@ Returns `429 Too Many Requests` with a JSON error body and `Retry-After` header:
 
 ### What rate limiting does NOT cover
 
-- **Plan quotas** (free vs. paid tiers) — these belong in each client app, not in ai-wrap. The gateway enforces an abuse floor; the client enforces pricing.
-- **Per-provider upstream limits** — the Gemini free tier has its own 15 RPM / 1500 RPD cap that ai-wrap does not currently enforce. If you hit it, you'll get 429s from Gemini surfaced as 500s. Run on paid tiers or add a per-provider limiter layer when this becomes a problem.
+- **Plan quotas** (free vs. paid tiers) — these belong in each client app, not in ai-shim. The gateway enforces an abuse floor; the client enforces pricing.
+- **Per-provider upstream limits** — the Gemini free tier has its own 15 RPM / 1500 RPD cap that ai-shim does not currently enforce. If you hit it, you'll get 429s from Gemini surfaced as 500s. Run on paid tiers or add a per-provider limiter layer when this becomes a problem.
 - **Edge / IP-level abuse** — put Cloudflare, a Traefik middleware, or CrowdSec in front for pre-auth filtering.
 
 ---
@@ -1035,10 +1035,10 @@ Scrape config for Prometheus:
 
 ```yaml
 scrape_configs:
-  - job_name: ai-wrap
+  - job_name: ai-shim
     metrics_path: /q/metrics
     static_configs:
-      - targets: ['ai-wrap:8090']
+      - targets: ['ai-shim:8090']
 ```
 
 ### Audit Log
@@ -1065,7 +1065,7 @@ The log rotates at 10 MB with 5 backups. Prompt content is intentionally exclude
 ### Console Logs
 
 - **Dev / test**: human-readable format with request ID, trace ID, and span ID in brackets
-- **Prod profile** (`QUARKUS_PROFILE=prod`): structured JSON one-line-per-log so Promtail / Fluent Bit / Vector can parse fields natively. Every line carries `service.name=ai-wrap`, plus standard OTel `traceId` / `spanId` from MDC.
+- **Prod profile** (`QUARKUS_PROFILE=prod`): structured JSON one-line-per-log so Promtail / Fluent Bit / Vector can parse fields natively. Every line carries `service.name=ai-shim`, plus standard OTel `traceId` / `spanId` from MDC.
 
 ### Request Tracing
 
@@ -1076,9 +1076,9 @@ Each request gets an 8-hex-char `requestId` generated at entry:
 
 ### Distributed Tracing (OpenTelemetry)
 
-ai-wrap ships with `quarkus-opentelemetry`. It:
+ai-shim ships with `quarkus-opentelemetry`. It:
 
-- Honors W3C `traceparent` headers from upstream callers, so traces from your client apps continue through ai-wrap
+- Honors W3C `traceparent` headers from upstream callers, so traces from your client apps continue through ai-shim
 - Exports spans via OTLP/gRPC to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4317` in the prod profile)
 - Works with Tempo, Jaeger, Honeycomb, any OTLP-compatible backend
 - Set `QUARKUS_OTEL_ENABLED=false` to disable entirely for local runs
@@ -1089,7 +1089,7 @@ Every AI invocation becomes a trace with spans covering template resolution, Pro
 
 `GET /q/health/ready` runs a custom `ProviderHealthCheck` that reports the enabled/disabled status of each provider. The service reports `UP` if at least one provider is enabled.
 
-When `AI_WRAP_REDIS_HEALTH=true` (default in prod profile), the Redis readiness probe also contributes — the service reports `DOWN` if Redis is unreachable. In dev the probe is disabled so `/q/health/ready` stays UP without a real Redis.
+When `AI_SHIM_REDIS_HEALTH=true` (default in prod profile), the Redis readiness probe also contributes — the service reports `DOWN` if Redis is unreachable. In dev the probe is disabled so `/q/health/ready` stays UP without a real Redis.
 
 ---
 
@@ -1117,7 +1117,7 @@ Question: {question}
 
 ### Bundled templates
 
-**None.** ai-wrap is app-agnostic and does not ship with any domain-specific prompt templates. Every caller is free to:
+**None.** ai-shim is app-agnostic and does not ship with any domain-specific prompt templates. Every caller is free to:
 
 - Send raw prompts via the `prompt` field (the default, and what most clients should do)
 - Manage their own prompts in their own codebase or database
@@ -1222,13 +1222,13 @@ curl "http://localhost:8090/ai/providers/openrouter/models" \
 
 ## Connecting Your App
 
-AI Wrap is designed to be called by any application. The only shared configuration is `AUTH_SERVICE_URL` — your app obtains JWTs from auth-service and passes them to AI Wrap.
+AI Shim is designed to be called by any application. The only shared configuration is `AUTH_SERVICE_URL` — your app obtains JWTs from auth-service and passes them to AI Shim.
 
 ### Required environment variable in your app
 
 ```env
-AI_WRAP_URL=http://ai-wrap:8090    # Docker (use service name)
-AI_WRAP_URL=http://localhost:8090  # local dev
+AI_SHIM_URL=http://ai-shim:8090    # Docker (use service name)
+AI_SHIM_URL=http://localhost:8090  # local dev
 ```
 
 ### Docker network setup
@@ -1237,14 +1237,14 @@ Your app's `docker-compose.yml` must join the same external network:
 
 ```yaml
 networks:
-  ai-wrap-network:
+  ai-shim-network:
     external: true
 ```
 
 ### Minimal request example (JavaScript / fetch)
 
 ```js
-const res = await fetch(`${AI_WRAP_URL}/ai`, {
+const res = await fetch(`${AI_SHIM_URL}/ai`, {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${jwt}`,
@@ -1299,10 +1299,10 @@ Test classes:
 ## Project Structure
 
 ```
-ai-wrap/
+ai-shim/
 ├── mvnw / mvnw.cmd                     # Maven wrapper — no Maven installation required
 ├── pom.xml                             # Build (Quarkus 3.32, Java 25, Kotlin 2.3)
-├── docker-compose.yml                  # ai-wrap service
+├── docker-compose.yml                  # ai-shim service
 ├── .env.example                        # Template for environment variables
 ├── .dockerignore                       # Excludes target/, .git/, test sources
 ├── .github/
@@ -1311,7 +1311,7 @@ ai-wrap/
 ├── src/main/docker/
 │   └── Dockerfile.jvm                 # Non-root JRE-25 image with HEALTHCHECK
 │
-└── src/main/kotlin/com/adars/aiwrap/
+└── src/main/kotlin/com/adars/aishim/
     ├── Application.kt                 # @QuarkusMain entry point
     │
     ├── filter/

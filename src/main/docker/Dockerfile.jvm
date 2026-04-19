@@ -15,7 +15,7 @@ RUN ./mvnw package -B -DskipTests
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM eclipse-temurin:25-jre
 
-LABEL org.opencontainers.image.title="ai-wrap" \
+LABEL org.opencontainers.image.title="ai-shim" \
       org.opencontainers.image.description="Vendor-agnostic AI gateway" \
       org.opencontainers.image.version="1.0.0"
 
