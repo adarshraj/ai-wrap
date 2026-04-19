@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Each entry stores the count plus an absolute expiry timestamp (ms). Expired entries are swept
  * lazily on every call to avoid unbounded memory growth. Single-replica only — if you run more
- * than one ai-wrap pod behind a load balancer, switch to [RedisRateLimiterBackend] so counters
+ * than one ai-shim pod behind a load balancer, switch to [RedisRateLimiterBackend] so counters
  * are shared.
  */
 @ApplicationScoped

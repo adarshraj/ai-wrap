@@ -280,7 +280,7 @@ class AiService @Inject constructor(
             // Enforce total size limit across all message content (including system prompt override)
             val totalChars = multiTurnMessages.sumOf { it.content.length } + (systemPromptOverride?.length ?: 0)
             if (totalChars > maxPromptChars) throw BadRequestException(
-                "Total message content too large: $totalChars chars exceeds $maxPromptChars limit. Raise AI_WRAP_MAX_PROMPT_CHARS to allow longer conversations."
+                "Total message content too large: $totalChars chars exceeds $maxPromptChars limit. Raise AI_SHIM_MAX_PROMPT_CHARS to allow longer conversations."
             )
 
             val l4j = mutableListOf<ChatMessage>()
@@ -323,7 +323,7 @@ class AiService @Inject constructor(
     ): ResolvedPrompt {
         val (templateSystem, userPrompt) = if (!rawPrompt.isNullOrBlank()) {
             if (rawPrompt.length > maxPromptChars) throw BadRequestException(
-                "Prompt too large: ${rawPrompt.length} chars exceeds $maxPromptChars limit. Raise AI_WRAP_MAX_PROMPT_CHARS to allow longer prompts."
+                "Prompt too large: ${rawPrompt.length} chars exceeds $maxPromptChars limit. Raise AI_SHIM_MAX_PROMPT_CHARS to allow longer prompts."
             )
             PromptGuard.assertSafe(rawPrompt, "prompt")
             Pair(null, rawPrompt)
@@ -334,7 +334,7 @@ class AiService @Inject constructor(
             val parsed = loadTemplate(templateName)
             val totalVariableLength = variables.values.sumOf { it.length }
             if (totalVariableLength > maxPromptChars) throw BadRequestException(
-                "Variable values too large: combined $totalVariableLength chars exceeds $maxPromptChars limit. Raise AI_WRAP_MAX_PROMPT_CHARS to allow longer prompts."
+                "Variable values too large: combined $totalVariableLength chars exceeds $maxPromptChars limit. Raise AI_SHIM_MAX_PROMPT_CHARS to allow longer prompts."
             )
             variables.forEach { (key, value) -> PromptGuard.assertSafe(value, key) }
             val user = substituteVariables(parsed.userPrompt, variables)

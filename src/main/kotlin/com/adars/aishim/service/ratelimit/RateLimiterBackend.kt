@@ -7,7 +7,7 @@ package com.adars.aishim.service.ratelimit
  * Selecting a backend at startup is driven by the `aishim.ratelimit.backend` config property:
  *
  * - `memory` (default) — in-process counters. Fine for single-replica deployments and local dev.
- * - `redis` — Quarkus Redis client. Use this whenever more than one ai-wrap replica is running
+ * - `redis` — Quarkus Redis client. Use this whenever more than one ai-shim replica is running
  *   so that counters are shared across pods.
  */
 interface RateLimiterBackend {

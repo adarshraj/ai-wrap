@@ -178,7 +178,7 @@ class AiResource @Inject constructor(
                 if (file!!.size() > maxUploadBytes) {
                     return Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
                         .entity(errorBody("File too large: ${file.size() / 1_048_576}MB exceeds ${maxUploadBytes / 1_048_576}MB limit. " +
-                                "Raise AI_WRAP_MAX_UPLOAD_BYTES to allow larger files."))
+                                "Raise AI_SHIM_MAX_UPLOAD_BYTES to allow larger files."))
                         .build()
                 }
                 val imageBytes = file.uploadedFile().toFile().readBytes()
@@ -278,7 +278,7 @@ class AiResource @Inject constructor(
                     if (file.size() > maxUploadBytes) {
                         throw TooLargeException(
                             "Reference file too large: ${file.size() / 1_048_576}MB exceeds ${maxUploadBytes / 1_048_576}MB limit. " +
-                                "Raise AI_WRAP_MAX_UPLOAD_BYTES to allow larger files."
+                                "Raise AI_SHIM_MAX_UPLOAD_BYTES to allow larger files."
                         )
                     }
                     ReferenceImage(

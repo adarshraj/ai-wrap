@@ -11,7 +11,7 @@
   <packaging>jar</packaging>
 
   <name>AI Shim</name>
-  <description>Vendor-agnostic AI wrapper — provider-independent gateway for text, vision, and OCR</description>
+  <description>Vendor-agnostic AI shim — provider-independent gateway for text, vision, and OCR</description>
 
   <properties>
     <maven.compiler.release>25</maven.compiler.release>
