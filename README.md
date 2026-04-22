@@ -209,7 +209,7 @@ These providers can also be configured per-request via the `api_key` field. Serv
 | `AI_SHIM_RATE_LIMIT_RPD` | `1000` | Max requests per user per day |
 | `AI_SHIM_RATELIMIT_BACKEND` | `memory` (dev) / `redis` (prod profile) | Storage backend. `memory` = in-process counters (single replica only). `redis` = shared across replicas. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string — used only when backend is `redis` |
-| `AI_SHIM_REDIS_HEALTH` | `false` (dev) / `true` (prod profile) | Whether the Redis readiness probe contributes to `/q/health/ready`. Disable in dev so the service stays UP without a real Redis. |
+| ~~`AI_SHIM_REDIS_HEALTH`~~ | — | **Removed.** Redis readiness is now derived from `AI_SHIM_RATELIMIT_BACKEND` at runtime: the probe pings Redis only when backend is `redis`, and reports UP with `redis=not-used` when backend is `memory`. No separate flag needed. |
 
 ### Image Generation
 
