@@ -22,6 +22,7 @@
     <kotlin.version>2.3.10</kotlin.version>
     <compiler-plugin.version>3.15.0</compiler-plugin.version>
     <surefire-plugin.version>3.5.5</surefire-plugin.version>
+    <jacoco-plugin.version>0.8.13</jacoco-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -269,6 +270,34 @@
         <version>${compiler-plugin.version}</version>
         <configuration>
           <release>25</release>
+        </configuration>
+      </plugin>
+
+      <!-- JaCoCo coverage — reports written to target/site/jacoco/index.html -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <excludes>
+            <exclude>com/adars/aishim/Application.class</exclude>
+            <exclude>com/adars/aishim/model/**</exclude>
+          </excludes>
         </configuration>
       </plugin>
     </plugins>
